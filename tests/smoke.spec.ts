@@ -31,6 +31,7 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
     expect.stringContaining('hero-night.webp'),
     expect.stringContaining('hunter-portraits.webp'),
     expect.stringContaining('sprite-atlas.webp'),
+    expect.stringContaining('structure-atlas.webp'),
     expect.stringContaining('night-ground.webp'),
   ]))
   expect(failedRequests).toEqual([])

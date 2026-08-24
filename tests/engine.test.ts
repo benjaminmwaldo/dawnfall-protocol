@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { GameEngine } from '../src/game/engine'
+import { spriteRotationForDirection } from '../src/game/renderer'
 import type { InputState, PlayerConfig } from '../src/game/types'
 
 const player: PlayerConfig = {
@@ -45,3 +46,17 @@ describe('GameEngine', () => {
   })
 })
 
+describe('top-down sprite rotation', () => {
+  it.each([
+    ['east', 0, Math.PI / 2],
+    ['south', Math.PI / 2, Math.PI],
+    ['west', Math.PI, Math.PI * 1.5],
+    ['north', -Math.PI / 2, 0],
+  ])('rotates a north-facing atlas sprite toward %s', (_label, direction, expected) => {
+    expect(spriteRotationForDirection(direction)).toBeCloseTo(expected)
+  })
+
+  it('preserves arbitrary analog aim angles without snapping', () => {
+    expect(spriteRotationForDirection(0.731)).toBeCloseTo(0.731 + Math.PI / 2)
+  })
+})

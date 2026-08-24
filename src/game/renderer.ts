@@ -8,8 +8,13 @@ interface Effect {
 }
 
 const TAU = Math.PI * 2
+const NORTH_FACING_SPRITE_OFFSET = Math.PI / 2
 const CHARACTER_SPRITE_INDEX: Record<PlayerState['character'], number> = { vesper: 0, cinder: 1, bastion: 2, warden: 3 }
 const ENEMY_SPRITE_INDEX: Record<EnemyState['type'], number> = { thrall: 4, skitter: 5, spitter: 6, bulwark: 7, tollkeeper: 8 }
+
+// The production atlas is drawn facing north. Canvas angles use east as zero,
+// so this offset keeps every sprite centered and freely rotatable through 360°.
+export const spriteRotationForDirection = (direction: number) => direction + NORTH_FACING_SPRITE_OFFSET
 
 export class GameRenderer {
   private readonly canvas: HTMLCanvasElement
@@ -23,7 +28,7 @@ export class GameRenderer {
   private lastEventId = 0
   private effects: Effect[] = []
   private readonly spriteAtlas = new Image()
-  private readonly armoryAtlas = new Image()
+  private readonly structureAtlas = new Image()
   private readonly groundTexture = new Image()
 
   constructor(canvas: HTMLCanvasElement, artBase: string) {
@@ -32,7 +37,7 @@ export class GameRenderer {
     if (!context) throw new Error('Canvas rendering is not supported in this browser.')
     this.context = context
     this.spriteAtlas.src = `${artBase}sprite-atlas.webp`
-    this.armoryAtlas.src = `${artBase}armory-atlas.webp`
+    this.structureAtlas.src = `${artBase}structure-atlas.webp`
     this.groundTexture.src = `${artBase}night-ground.webp`
     this.resize()
   }
@@ -143,11 +148,11 @@ export class GameRenderer {
     const context = this.context
     for (const structure of structures) {
       const pulse = 0.5 + Math.sin(performance.now() / 620 + structure.id) * 0.5
-      if (this.armoryAtlas.complete && this.armoryAtlas.naturalWidth > 0) {
+      if (this.structureAtlas.complete && this.structureAtlas.naturalWidth > 0) {
         const art = {
-          moonwell: { index: 3, size: 142, label: 'MOONWELL · HEALS', color: '116, 216, 194' },
-          'ward-tower': { index: 4, size: 158, label: 'WARD TOWER · FIRES', color: '116, 216, 194' },
-          'ritual-stone': { index: 5, size: 150, label: 'RITUAL STONE · RAPID FIRE', color: '242, 212, 121' },
+          moonwell: { index: 0, size: 156, label: 'MOONWELL · HEALS', color: '116, 216, 194' },
+          'ward-tower': { index: 1, size: 164, label: 'WARD TOWER · FIRES', color: '116, 216, 194' },
+          'ritual-stone': { index: 2, size: 158, label: 'RITUAL STONE · RAPID FIRE', color: '242, 212, 121' },
         }[structure.type]
         const glow = context.createRadialGradient(structure.x, structure.y, 4, structure.x, structure.y, structure.radius * 1.18)
         glow.addColorStop(0, `rgba(${art.color}, ${0.13 + pulse * 0.06})`)
@@ -156,7 +161,7 @@ export class GameRenderer {
         context.beginPath()
         context.arc(structure.x, structure.y, structure.radius * 1.18, 0, TAU)
         context.fill()
-        this.drawAtlasSprite(this.armoryAtlas, 3, 2, art.index, structure.x, structure.y - 9, art.size, art.size)
+        this.drawAtlasSprite(this.structureAtlas, 2, 2, art.index, structure.x, structure.y, art.size, art.size)
         this.drawLabel(structure.x, structure.y + structure.radius + 18, art.label, structure.type === 'ritual-stone' ? '#e9d68f' : '#9fe4d5')
         continue
       }
@@ -246,7 +251,7 @@ export class GameRenderer {
       const color = burning ? '#ff735c' : enemy.slow > 0 ? '#9bd6ff' : '#e8eee7'
       if (this.spriteAtlas.complete && this.spriteAtlas.naturalWidth > 0) {
         const size = enemy.type === 'tollkeeper' ? 172 : enemy.type === 'bulwark' ? 116 : enemy.type === 'spitter' ? 72 : 78
-        const rotation = Math.atan2(enemy.vy, enemy.vx) - Math.PI / 4
+        const rotation = spriteRotationForDirection(Math.atan2(enemy.vy, enemy.vx))
         context.save()
         context.fillStyle = 'rgba(0, 0, 0, .46)'
         context.beginPath()
@@ -365,7 +370,7 @@ export class GameRenderer {
         context.globalAlpha = player.downed ? 0.48 : 1
         context.shadowColor = player.color
         context.shadowBlur = local ? 18 : 9
-        const rotation = player.downed ? 1.15 : player.aim - Math.PI / 4
+        const rotation = spriteRotationForDirection(player.aim)
         this.drawAtlasSprite(this.spriteAtlas, 3, 3, CHARACTER_SPRITE_INDEX[player.character], player.x, player.y, size, size, rotation)
         context.restore()
         if (player.downed) {
