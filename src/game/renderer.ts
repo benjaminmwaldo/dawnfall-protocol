@@ -8,6 +8,8 @@ interface Effect {
 }
 
 const TAU = Math.PI * 2
+const CHARACTER_SPRITE_INDEX: Record<PlayerState['character'], number> = { vesper: 0, cinder: 1, bastion: 2, warden: 3 }
+const ENEMY_SPRITE_INDEX: Record<EnemyState['type'], number> = { thrall: 4, skitter: 5, spitter: 6, bulwark: 7, tollkeeper: 8 }
 
 export class GameRenderer {
   private readonly canvas: HTMLCanvasElement
@@ -20,12 +22,18 @@ export class GameRenderer {
   private lastFrame = performance.now()
   private lastEventId = 0
   private effects: Effect[] = []
+  private readonly spriteAtlas = new Image()
+  private readonly armoryAtlas = new Image()
+  private readonly groundTexture = new Image()
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, artBase: string) {
     this.canvas = canvas
     const context = canvas.getContext('2d')
     if (!context) throw new Error('Canvas rendering is not supported in this browser.')
     this.context = context
+    this.spriteAtlas.src = `${artBase}sprite-atlas.webp`
+    this.armoryAtlas.src = `${artBase}armory-atlas.webp`
+    this.groundTexture.src = `${artBase}night-ground.webp`
     this.resize()
   }
 
@@ -76,10 +84,23 @@ export class GameRenderer {
     const context = this.context
     context.fillStyle = '#07100e'
     context.fillRect(0, 0, this.width, this.height)
+    if (this.groundTexture.complete && this.groundTexture.naturalWidth > 0) {
+      const tileSize = 627
+      const offsetX = ((-this.cameraX % tileSize) + tileSize) % tileSize - tileSize
+      const offsetY = ((-this.cameraY % tileSize) + tileSize) % tileSize - tileSize
+      context.save()
+      context.globalAlpha = 0.48
+      for (let x = offsetX; x < this.width + tileSize; x += tileSize) {
+        for (let y = offsetY; y < this.height + tileSize; y += tileSize) {
+          context.drawImage(this.groundTexture, x, y, tileSize, tileSize)
+        }
+      }
+      context.restore()
+    }
     const glow = context.createRadialGradient(this.width / 2, this.height / 2, 0, this.width / 2, this.height / 2, this.width * 0.7)
-    glow.addColorStop(0, 'rgba(27, 57, 48, .45)')
-    glow.addColorStop(0.55, 'rgba(7, 16, 14, .18)')
-    glow.addColorStop(1, 'rgba(1, 6, 5, .88)')
+    glow.addColorStop(0, 'rgba(31, 69, 56, .28)')
+    glow.addColorStop(0.55, 'rgba(7, 16, 14, .14)')
+    glow.addColorStop(1, 'rgba(1, 6, 5, .76)')
     context.fillStyle = glow
     context.fillRect(0, 0, this.width, this.height)
   }
@@ -122,6 +143,23 @@ export class GameRenderer {
     const context = this.context
     for (const structure of structures) {
       const pulse = 0.5 + Math.sin(performance.now() / 620 + structure.id) * 0.5
+      if (this.armoryAtlas.complete && this.armoryAtlas.naturalWidth > 0) {
+        const art = {
+          moonwell: { index: 3, size: 142, label: 'MOONWELL · HEALS', color: '116, 216, 194' },
+          'ward-tower': { index: 4, size: 158, label: 'WARD TOWER · FIRES', color: '116, 216, 194' },
+          'ritual-stone': { index: 5, size: 150, label: 'RITUAL STONE · RAPID FIRE', color: '242, 212, 121' },
+        }[structure.type]
+        const glow = context.createRadialGradient(structure.x, structure.y, 4, structure.x, structure.y, structure.radius * 1.18)
+        glow.addColorStop(0, `rgba(${art.color}, ${0.13 + pulse * 0.06})`)
+        glow.addColorStop(1, `rgba(${art.color}, 0)`)
+        context.fillStyle = glow
+        context.beginPath()
+        context.arc(structure.x, structure.y, structure.radius * 1.18, 0, TAU)
+        context.fill()
+        this.drawAtlasSprite(this.armoryAtlas, 3, 2, art.index, structure.x, structure.y - 9, art.size, art.size)
+        this.drawLabel(structure.x, structure.y + structure.radius + 18, art.label, structure.type === 'ritual-stone' ? '#e9d68f' : '#9fe4d5')
+        continue
+      }
       if (structure.type === 'moonwell') {
         context.fillStyle = `rgba(116, 216, 194, ${0.06 + pulse * 0.04})`
         context.beginPath()
@@ -188,13 +226,16 @@ export class GameRenderer {
     context.lineCap = 'round'
     for (const projectile of snapshot.projectiles) {
       context.strokeStyle = projectile.color
-      context.lineWidth = projectile.radius * 1.4
+      context.lineWidth = projectile.radius * 1.5
       context.globalAlpha = projectile.enemy ? 0.8 : 0.95
+      context.shadowColor = projectile.color
+      context.shadowBlur = projectile.enemy ? 9 : 13
       context.beginPath()
       context.moveTo(projectile.x, projectile.y)
-      context.lineTo(projectile.x - projectile.vx * 0.025, projectile.y - projectile.vy * 0.025)
+      context.lineTo(projectile.x - projectile.vx * 0.035, projectile.y - projectile.vy * 0.035)
       context.stroke()
     }
+    context.shadowBlur = 0
     context.globalAlpha = 1
   }
 
@@ -203,6 +244,31 @@ export class GameRenderer {
     for (const enemy of enemies) {
       const burning = enemy.burn > 0
       const color = burning ? '#ff735c' : enemy.slow > 0 ? '#9bd6ff' : '#e8eee7'
+      if (this.spriteAtlas.complete && this.spriteAtlas.naturalWidth > 0) {
+        const size = enemy.type === 'tollkeeper' ? 172 : enemy.type === 'bulwark' ? 116 : enemy.type === 'spitter' ? 72 : 78
+        const rotation = Math.atan2(enemy.vy, enemy.vx) - Math.PI / 4
+        context.save()
+        context.fillStyle = 'rgba(0, 0, 0, .46)'
+        context.beginPath()
+        context.ellipse(enemy.x, enemy.y + enemy.radius * 0.72, size * 0.28, size * 0.12, 0, 0, TAU)
+        context.fill()
+        context.shadowColor = burning ? '#ff593d' : enemy.slow > 0 ? '#82ceff' : enemy.type === 'tollkeeper' ? '#ef375e' : 'rgba(0,0,0,0)'
+        context.shadowBlur = burning || enemy.slow > 0 ? 20 : enemy.type === 'tollkeeper' ? 16 : 0
+        this.drawAtlasSprite(this.spriteAtlas, 3, 3, ENEMY_SPRITE_INDEX[enemy.type], enemy.x, enemy.y, size, size, rotation)
+        context.restore()
+        if (enemy.type === 'tollkeeper') {
+          context.strokeStyle = `rgba(239, 113, 142, ${0.28 + Math.sin(enemy.phase * 2) * 0.08})`
+          context.lineWidth = 2
+          context.beginPath()
+          context.arc(enemy.x, enemy.y, 69 + Math.sin(enemy.phase * 2) * 4, 0, TAU)
+          context.stroke()
+        }
+        if ((enemy.type === 'tollkeeper' || enemy.type === 'bulwark') && enemy.maxHealth > 500) {
+          const barWidth = enemy.type === 'tollkeeper' ? 130 : 92
+          this.drawBar(enemy.x - barWidth / 2, enemy.y - size * 0.47, barWidth, 5, enemy.health / enemy.maxHealth, '#ef718e')
+        }
+        continue
+      }
       context.save()
       context.translate(enemy.x, enemy.y)
       context.rotate(Math.atan2(enemy.vy, enemy.vx) + Math.PI / 2)
@@ -274,6 +340,50 @@ export class GameRenderer {
         context.stroke()
       }
 
+      if (this.spriteAtlas.complete && this.spriteAtlas.naturalWidth > 0) {
+        const local = player.id === localPlayerId
+        const size = player.character === 'bastion' ? 94 : 86
+        context.save()
+        context.fillStyle = 'rgba(0, 0, 0, .48)'
+        context.beginPath()
+        context.ellipse(player.x, player.y + 18, 27, 10, 0, 0, TAU)
+        context.fill()
+        if (local && !player.downed) {
+          context.strokeStyle = player.color
+          context.globalAlpha = 0.72
+          context.lineWidth = 1.5
+          context.setLineDash([3, 5])
+          context.beginPath()
+          context.arc(player.x, player.y, 31 + Math.sin(performance.now() / 180) * 2, 0, TAU)
+          context.stroke()
+          context.setLineDash([])
+          context.beginPath()
+          context.moveTo(player.x + Math.cos(player.aim) * 22, player.y + Math.sin(player.aim) * 22)
+          context.lineTo(player.x + Math.cos(player.aim) * 44, player.y + Math.sin(player.aim) * 44)
+          context.stroke()
+        }
+        context.globalAlpha = player.downed ? 0.48 : 1
+        context.shadowColor = player.color
+        context.shadowBlur = local ? 18 : 9
+        const rotation = player.downed ? 1.15 : player.aim - Math.PI / 4
+        this.drawAtlasSprite(this.spriteAtlas, 3, 3, CHARACTER_SPRITE_INDEX[player.character], player.x, player.y, size, size, rotation)
+        context.restore()
+        if (player.downed) {
+          context.strokeStyle = '#ef718e'
+          context.lineWidth = 2
+          context.beginPath()
+          context.moveTo(player.x - 8, player.y - 8)
+          context.lineTo(player.x + 8, player.y + 8)
+          context.moveTo(player.x + 8, player.y - 8)
+          context.lineTo(player.x - 8, player.y + 8)
+          context.stroke()
+        }
+        this.drawBar(player.x - 24, player.y - size * 0.46, 48, 4, player.health / player.maxHealth, player.downed ? '#ef718e' : player.color)
+        if (player.downed) this.drawBar(player.x - 24, player.y - size * 0.39, 48, 3, player.reviveProgress / 2.2, '#f2d479')
+        this.drawLabel(player.x, player.y + size * 0.43, `${player.name}${player.awakened ? ' ✦' : ''}`, local ? '#f5f1de' : '#b8c4bd')
+        continue
+      }
+
       context.save()
       context.translate(player.x, player.y)
       if (player.downed) context.rotate(Math.sin(performance.now() / 120) * 0.05)
@@ -328,11 +438,21 @@ export class GameRenderer {
     for (const effect of this.effects) {
       effect.life -= dt
       const progress = Math.max(0, effect.life) / (effect.type === 'hurt' ? 0.32 : 0.2)
-      context.strokeStyle = effect.type === 'hurt' ? `rgba(239, 113, 142, ${progress})` : `rgba(242, 212, 121, ${progress})`
+      const color = effect.type === 'hurt' ? '239, 113, 142' : '242, 212, 121'
+      context.strokeStyle = `rgba(${color}, ${progress})`
       context.lineWidth = 2
       context.beginPath()
       context.arc(effect.x, effect.y, 9 + (1 - progress) * 14, 0, TAU)
       context.stroke()
+      for (let spark = 0; spark < 5; spark += 1) {
+        const angle = (spark / 5) * TAU + effect.x * 0.013
+        const inner = 5 + (1 - progress) * 7
+        const outer = inner + 6 * progress
+        context.beginPath()
+        context.moveTo(effect.x + Math.cos(angle) * inner, effect.y + Math.sin(angle) * inner)
+        context.lineTo(effect.x + Math.cos(angle) * outer, effect.y + Math.sin(angle) * outer)
+        context.stroke()
+      }
     }
     this.effects = this.effects.filter((effect) => effect.life > 0)
   }
@@ -368,6 +488,39 @@ export class GameRenderer {
       context.textAlign = 'center'
       context.fillText(player.name.toUpperCase(), x, y - 10)
     }
+  }
+
+  private drawAtlasSprite(
+    image: HTMLImageElement,
+    columns: number,
+    rows: number,
+    index: number,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    rotation = 0,
+  ) {
+    const context = this.context
+    const sourceWidth = image.naturalWidth / columns
+    const sourceHeight = image.naturalHeight / rows
+    const column = index % columns
+    const row = Math.floor(index / columns)
+    context.save()
+    context.translate(x, y)
+    context.rotate(rotation)
+    context.drawImage(
+      image,
+      column * sourceWidth,
+      row * sourceHeight,
+      sourceWidth,
+      sourceHeight,
+      -width / 2,
+      -height / 2,
+      width,
+      height,
+    )
+    context.restore()
   }
 
   private polygonPath(sides: number, radius: number) {

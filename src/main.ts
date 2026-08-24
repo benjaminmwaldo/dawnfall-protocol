@@ -1,5 +1,5 @@
 import './style.css'
-import { CHARACTERS, PLAYER_COLORS, WEAPONS, characterById, upgradeById, weaponById } from './game/data'
+import { CHARACTERS, PLAYER_COLORS, UPGRADES, WEAPONS, characterById, upgradeById, weaponById } from './game/data'
 import { GameEngine } from './game/engine'
 import { GameRenderer } from './game/renderer'
 import type { GameSnapshot, InputState, PlayerConfig } from './game/types'
@@ -14,6 +14,22 @@ if (!app) throw new Error('App shell was not found.')
 const makePlayerId = () => crypto.randomUUID().slice(0, 8)
 const escapeHtml = (text: string) => text.replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character] ?? character)
 const formatTime = (seconds: number) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`
+const ART_BASE = `${import.meta.env.BASE_URL}art/`
+const CHARACTER_ART_INDEX: Record<PlayerConfig['character'], number> = { vesper: 0, cinder: 1, bastion: 2, warden: 3 }
+const WEAPON_ART_INDEX: Record<PlayerConfig['weapon'], number> = { revolver: 0, scattergun: 1, 'arc-rifle': 2 }
+const atlasStyle = (file: string, columns: number, rows: number, index: number) => {
+  const column = index % columns
+  const row = Math.floor(index / columns)
+  const x = columns === 1 ? 0 : (column / (columns - 1)) * 100
+  const y = rows === 1 ? 0 : (row / (rows - 1)) * 100
+  return `background-image:url('${ART_BASE}${file}');background-size:${columns * 100}% ${rows * 100}%;background-position:${x}% ${y}%;`
+}
+const portraitStyle = (character: PlayerConfig['character']) => atlasStyle('hunter-portraits.webp', 2, 2, CHARACTER_ART_INDEX[character])
+const weaponArtStyle = (weapon: PlayerConfig['weapon']) => atlasStyle('armory-atlas.webp', 3, 2, WEAPON_ART_INDEX[weapon])
+const perkArtStyle = (perkId: string) => atlasStyle('perk-atlas.webp', 4, 3, Math.max(0, UPGRADES.findIndex((perk) => perk.id === perkId)))
+
+document.documentElement.style.setProperty('--hero-art', `url('${ART_BASE}hero-night.webp')`)
+document.documentElement.style.setProperty('--ground-art', `url('${ART_BASE}night-ground.webp')`)
 
 class AudioPulse {
   private context?: AudioContext
@@ -111,6 +127,7 @@ class DawnfallApp {
           <button class="text-button" id="about-button">DESIGN NOTES</button>
         </header>
         <section class="hero-grid">
+          <div class="hero-art-flare" aria-hidden="true"></div>
           <div class="hero-copy">
             <p class="eyebrow">1–4 PLAYER CO-OP SURVIVAL ROGUELITE</p>
             <h1>HOLD THE LINE<br><em>UNTIL DAWN.</em></h1>
@@ -149,7 +166,7 @@ class DawnfallApp {
         <p><em>20 Minutes Till Dawn</em> stands apart from passive survivor-likes through directional aiming, active firing, magazines, reloads, character–weapon pairing, upgrade trees, and boss-granted power spikes.</p>
         <p>Dawnfall keeps that active tension, then changes the decision unit from one build to a squad build: rotating perk choices, rescue play, protective auras, and fixed structures that encourage regrouping.</p>
         <div class="dialog-rule"></div>
-        <p class="small-copy">This prototype uses original names, code, balancing, visual language, characters, enemies, and abilities.</p>
+        <p class="small-copy">This prototype uses original names, code, balancing, visual language, characters, enemies, abilities, and hand-directed generated artwork.</p>
       </dialog>
     `
     this.bindHomeEvents()
@@ -212,8 +229,9 @@ class DawnfallApp {
             <div class="section-heading"><span>01</span><div><h2>CHOOSE YOUR HUNTER</h2><p>Base abilities define your role before the first perk drops.</p></div></div>
             <div class="character-grid">
               ${CHARACTERS.map((character) => `
-                <button class="selection-card character-card ${this.localConfig.character === character.id ? 'selected' : ''}" data-character="${character.id}">
-                  <span class="card-glyph" style="--accent:${character.color}">${character.glyph}</span>
+                <button class="selection-card character-card ${this.localConfig.character === character.id ? 'selected' : ''}" data-character="${character.id}" style="--accent:${character.color}">
+                  <span class="portrait-art" style="${portraitStyle(character.id)}"></span>
+                  <span class="portrait-sigil">${character.glyph}</span>
                   <span class="card-copy"><small>${character.epithet}</small><strong>${character.name}</strong><em>${character.description}</em><b>${character.baseAbility}</b></span>
                 </button>`).join('')}
             </div>
@@ -221,7 +239,7 @@ class DawnfallApp {
             <div class="weapon-grid">
               ${WEAPONS.map((weapon) => `
                 <button class="selection-card weapon-card ${this.localConfig.weapon === weapon.id ? 'selected' : ''}" data-weapon="${weapon.id}">
-                  <span class="weapon-glyph">${weapon.glyph}</span><span><strong>${weapon.name}</strong><em>${weapon.description}</em></span>
+                  <span class="weapon-art" style="${weaponArtStyle(weapon.id)}"></span><span><strong>${weapon.name}</strong><em>${weapon.description}</em></span>
                   <span class="weapon-stats"><b>${weapon.damage}</b><small>DMG</small><b>${weapon.magazine}</b><small>MAG</small></span>
                 </button>`).join('')}
             </div>
@@ -233,7 +251,7 @@ class DawnfallApp {
               ${this.party.map((player, index) => {
                 const character = characterById(player.character)
                 const weapon = weaponById(player.weapon)
-                return `<article class="party-member"><span class="party-number">0${index + 1}</span><span class="party-avatar" style="--player:${player.color}">${character.glyph}</span><div><strong>${escapeHtml(player.name)}${player.id === this.localConfig.id ? ' · YOU' : ''}</strong><small>${character.name} / ${weapon.name}</small></div><i>READY</i></article>`
+                return `<article class="party-member"><span class="party-number">0${index + 1}</span><span class="party-avatar" style="--player:${player.color};${portraitStyle(player.character)}"></span><div><strong>${escapeHtml(player.name)}${player.id === this.localConfig.id ? ' · YOU' : ''}</strong><small>${character.name} / ${weapon.name}</small></div><i>READY</i></article>`
               }).join('')}
               ${Array.from({ length: Math.max(0, 4 - this.party.length) }, (_, index) => `<article class="party-member empty"><span class="party-number">0${this.party.length + index + 1}</span><span class="party-avatar">·</span><div><strong>OPEN SLOT</strong><small>Waiting in the dark</small></div></article>`).join('')}
             </div>
@@ -325,7 +343,7 @@ class DawnfallApp {
     `
     const canvas = document.querySelector<HTMLCanvasElement>('#game-canvas')
     if (!canvas) throw new Error('Game canvas was not created.')
-    this.renderer = new GameRenderer(canvas)
+    this.renderer = new GameRenderer(canvas, ART_BASE)
     this.bindGameEvents(canvas)
     this.lastFrame = performance.now()
     this.lastHud = 0
@@ -401,14 +419,14 @@ class DawnfallApp {
     const team = document.querySelector('#team-hud')
     if (team) team.innerHTML = snapshot.players.map((player) => `
       <article class="team-chip ${player.downed ? 'downed' : ''} ${player.eliminated ? 'eliminated' : ''}">
-        <span style="--player:${player.color}">${characterById(player.character).glyph}</span>
+        <span class="team-portrait" style="--player:${player.color};${portraitStyle(player.character)}"></span>
         <div><b>${escapeHtml(player.name)}</b><i><em style="width:${(player.health / player.maxHealth) * 100}%"></em></i></div>
         <small>${player.eliminated ? 'LOST' : player.downed ? `${Math.ceil(player.downTimer)}s` : `${Math.ceil(player.health)}`}</small>
       </article>`).join('')
 
     const perks = document.querySelector('#perks-hud')
     const activePerks = Object.entries(localPlayer?.perks ?? {}).filter(([, rank]) => rank > 0)
-    if (perks) perks.innerHTML = activePerks.map(([id, rank]) => `<span title="${upgradeById(id).name}">${upgradeById(id).icon}<b>${rank}</b></span>`).join('')
+    if (perks) perks.innerHTML = activePerks.map(([id, rank]) => `<span class="perk-medallion" title="${upgradeById(id).name}" style="${perkArtStyle(id)}"><b>${rank}</b></span>`).join('')
 
     const ammo = document.querySelector('#ammo-hud')
     if (ammo && localPlayer) {
@@ -451,7 +469,7 @@ class DawnfallApp {
           ${offer.ids.map((id) => {
             const upgrade = upgradeById(id)
             const rank = (snapshot.players[0]?.perks[id] ?? 0) + 1
-            return `<button class="upgrade-card" data-upgrade="${id}" style="--accent:${upgrade.accent}" ${localChooses ? '' : 'disabled'}><span>${upgrade.icon}</span><small>RANK ${rank}/${upgrade.maxLevel}</small><strong>${upgrade.name}</strong><em>${upgrade.description}</em><b>TAKE PERK →</b></button>`
+            return `<button class="upgrade-card" data-upgrade="${id}" style="--accent:${upgrade.accent}" ${localChooses ? '' : 'disabled'}><span class="upgrade-art" style="${perkArtStyle(id)}"></span><small>RANK ${rank}/${upgrade.maxLevel}</small><strong>${upgrade.name}</strong><em>${upgrade.description}</em><b>TAKE PERK →</b></button>`
           }).join('')}
         </div>
       </section>`
@@ -501,9 +519,9 @@ class DawnfallApp {
           <article><small>DAMAGE DEALT</small><strong>${Math.round(totalDamage).toLocaleString()}</strong></article>
         </section>
         <section class="recap-party">
-          ${this.snapshot.players.map((player) => `<article><span style="--player:${player.color}">${characterById(player.character).glyph}</span><div><strong>${escapeHtml(player.name)}</strong><small>${characterById(player.character).name} · ${weaponById(player.weapon).name}</small></div><b>${player.kills} KILLS</b><em>${Math.round(player.damageDealt).toLocaleString()} DMG</em></article>`).join('')}
+          ${this.snapshot.players.map((player) => `<article><span class="recap-portrait" style="--player:${player.color};${portraitStyle(player.character)}"></span><div><strong>${escapeHtml(player.name)}</strong><small>${characterById(player.character).name} · ${weaponById(player.weapon).name}</small></div><b>${player.kills} KILLS</b><em>${Math.round(player.damageDealt).toLocaleString()} DMG</em></article>`).join('')}
         </section>
-        <div class="recap-build"><small>FINAL SQUAD BUILD</small><div>${activePerks.length ? activePerks.map(([id, rank]) => `<span>${upgradeById(id).icon} ${upgradeById(id).name} <b>×${rank}</b></span>`).join('') : '<em>No perks secured.</em>'}</div></div>
+        <div class="recap-build"><small>FINAL SQUAD BUILD</small><div>${activePerks.length ? activePerks.map(([id, rank]) => `<span><i style="${perkArtStyle(id)}"></i>${upgradeById(id).name} <b>×${rank}</b></span>`).join('') : '<em>No perks secured.</em>'}</div></div>
         <div class="recap-actions"><button class="primary-button" id="again-button">RUN IT AGAIN</button><button class="secondary-button" id="home-button">RETURN TO CAMP</button></div>
         <p class="prototype-note">BALANCE NOTE · This is a combat-and-networking prototype. Numbers, spawn density, and WebRTC reliability need broader playtest data.</p>
       </main>`

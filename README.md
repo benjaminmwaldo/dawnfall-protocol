@@ -12,6 +12,10 @@ An original 1–4 player browser survival roguelite prototype inspired by the ac
 - Defeat the Tollkeeper to awaken every hunter's base ability.
 - Select a compressed four-minute field test or the intended twenty-minute run.
 
+## Art direction
+
+The interface and game world use an original moonlit dark-fantasy visual system: painterly hunter portraits, top-down character and creature sprites, illustrated weapons and sacred structures, perk medallions, textured terrain, inked framing, and restrained gold/teal/crimson lighting. The production-ready WebP atlases live in `public/art`; CSS and the canvas renderer share those assets so the landing page, lobby, HUD, upgrade choices, and battlefield feel like one world.
+
 ## Multiplayer model
 
 The host runs the authoritative simulation and sends compact state snapshots to up to three guests through PeerJS/WebRTC. GitHub Pages only hosts the static client; PeerJS Cloud brokers the initial connection and gameplay traffic then travels over WebRTC data channels.
@@ -40,4 +44,3 @@ The Pages workflow reads `VITE_BASE` from a GitHub Actions variable. For a repos
 ## Attribution
 
 Research reference: *20 Minutes Till Dawn* by flanne. Dawnfall Protocol is not affiliated with flanne. All names, code, mechanics implementation, balancing, visual design, characters, enemies, and abilities in this repository are original to this prototype.
-
