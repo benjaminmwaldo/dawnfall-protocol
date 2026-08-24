@@ -1,0 +1,549 @@
+import './style.css'
+import { CHARACTERS, PLAYER_COLORS, WEAPONS, characterById, upgradeById, weaponById } from './game/data'
+import { GameEngine } from './game/engine'
+import { GameRenderer } from './game/renderer'
+import type { GameSnapshot, InputState, PlayerConfig } from './game/types'
+import { MultiplayerSession } from './network'
+
+type Screen = 'home' | 'lobby' | 'game' | 'recap'
+type SessionMode = 'solo' | 'host' | 'guest'
+
+const app = document.querySelector<HTMLDivElement>('#app') as HTMLDivElement
+if (!app) throw new Error('App shell was not found.')
+
+const makePlayerId = () => crypto.randomUUID().slice(0, 8)
+const escapeHtml = (text: string) => text.replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character] ?? character)
+const formatTime = (seconds: number) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`
+
+class AudioPulse {
+  private context?: AudioContext
+  private muted = false
+  private lastShot = 0
+
+  unlock() {
+    if (!this.context) this.context = new AudioContext()
+    if (this.context.state === 'suspended') void this.context.resume()
+  }
+
+  toggle(): boolean {
+    this.muted = !this.muted
+    return this.muted
+  }
+
+  event(type: string) {
+    if (!this.context || this.muted) return
+    const now = this.context.currentTime
+    if (type === 'shot' && now - this.lastShot < 0.045) return
+    if (type === 'shot') this.lastShot = now
+    const oscillator = this.context.createOscillator()
+    const gain = this.context.createGain()
+    const settings: Record<string, [number, number, number]> = {
+      shot: [125, 70, 0.025], hurt: [95, 45, 0.12], level: [410, 720, 0.18],
+      boss: [65, 38, 0.34], revive: [300, 560, 0.2], awaken: [220, 880, 0.34], win: [360, 920, 0.5], lose: [150, 60, 0.55],
+    }
+    const [start, end, duration] = settings[type] ?? [170, 130, 0.04]
+    oscillator.type = type === 'boss' || type === 'lose' ? 'sawtooth' : 'triangle'
+    oscillator.frequency.setValueAtTime(start, now)
+    oscillator.frequency.exponentialRampToValueAtTime(Math.max(1, end), now + duration)
+    gain.gain.setValueAtTime(type === 'shot' ? 0.018 : 0.045, now)
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration)
+    oscillator.connect(gain).connect(this.context.destination)
+    oscillator.start(now)
+    oscillator.stop(now + duration)
+  }
+}
+
+class DawnfallApp {
+  private screen: Screen = 'home'
+  private mode: SessionMode = 'solo'
+  private duration = 240
+  private party: PlayerConfig[] = []
+  private localConfig: PlayerConfig
+  private engine?: GameEngine
+  private snapshot?: GameSnapshot
+  private renderer?: GameRenderer
+  private animationFrame = 0
+  private lastFrame = performance.now()
+  private lastHud = 0
+  private lastBroadcast = 0
+  private lastInputSend = 0
+  private lastHandledEvent = 0
+  private finishQueued = false
+  private readonly inputs = new Map<string, InputState>()
+  private readonly localInput: InputState = { up: false, down: false, left: false, right: false, firing: false, interact: false, aim: 0 }
+  private readonly audio = new AudioPulse()
+  private readonly network: MultiplayerSession
+
+  constructor() {
+    const storedName = localStorage.getItem('dawnfall-player-name')?.slice(0, 18) || 'Hunter'
+    this.localConfig = {
+      id: makePlayerId(),
+      name: storedName,
+      character: 'vesper',
+      weapon: 'revolver',
+      color: PLAYER_COLORS[0],
+    }
+    this.network = new MultiplayerSession({
+      onLobby: (players) => {
+        this.party = players
+        if (this.screen === 'lobby') this.renderLobby()
+      },
+      onStart: (configs, duration, seed) => this.beginGuestGame(configs, duration, seed),
+      onSnapshot: (snapshot) => { this.snapshot = snapshot },
+      onGuestInput: (playerId, input) => this.inputs.set(playerId, input),
+      onUpgrade: (playerId, upgradeId) => this.engine?.chooseUpgrade(upgradeId, playerId),
+      onNotice: (text) => this.showNotice(text),
+      onError: (message) => this.showNotice(message, true),
+    })
+
+    window.addEventListener('beforeunload', () => this.network.close())
+    this.renderHome()
+  }
+
+  private renderHome() {
+    this.stopGameLoop()
+    this.screen = 'home'
+    const roomFromUrl = new URLSearchParams(window.location.search).get('room')?.toUpperCase() ?? ''
+    app.innerHTML = `
+      <main class="landing-shell">
+        <header class="topbar">
+          <a class="wordmark" href="./" aria-label="Dawnfall Protocol home"><span class="sigil">◈</span> DAWNFALL <i>PROTOCOL</i></a>
+          <button class="text-button" id="about-button">DESIGN NOTES</button>
+        </header>
+        <section class="hero-grid">
+          <div class="hero-copy">
+            <p class="eyebrow">1–4 PLAYER CO-OP SURVIVAL ROGUELITE</p>
+            <h1>HOLD THE LINE<br><em>UNTIL DAWN.</em></h1>
+            <p class="hero-lede">Aim every shot. Build one squad. Survive one impossible night.</p>
+            <div class="run-readout" aria-label="Twenty minute run timeline">
+              <span>20:00</span><div><i></i><i></i><i></i></div><strong>00:00</strong>
+            </div>
+          </div>
+          <div class="entry-panel" data-testid="entry-panel">
+            <label class="field-label" for="player-name">CALLSIGN</label>
+            <input id="player-name" class="field-input" maxlength="18" value="${escapeHtml(this.localConfig.name)}" autocomplete="nickname">
+            <div class="entry-actions">
+              <button class="primary-button" id="solo-button" data-testid="solo-button"><span>PLAY SOLO</span><small>Learn the night</small></button>
+              <button class="secondary-button" id="host-button"><span>HOST A SQUAD</span><small>Invite up to 3 friends</small></button>
+            </div>
+            <div class="join-divider"><span>OR JOIN A HUNT</span></div>
+            <div class="join-row">
+              <input id="room-code" class="field-input code-input" maxlength="6" placeholder="ROOM CODE" value="${escapeHtml(roomFromUrl)}" aria-label="Six character room code">
+              <button class="square-button" id="join-button" aria-label="Join room">→</button>
+            </div>
+            <p class="network-note">No account. No install. Multiplayer uses a direct browser connection.</p>
+            <p class="form-status" id="form-status" role="status"></p>
+          </div>
+        </section>
+        <section class="principles" aria-label="Core game mechanics">
+          <article><b>01</b><span>ACTIVE COMBAT</span><p>WASD to move. Mouse to aim and fire. Ammunition and reload timing matter.</p></article>
+          <article><b>02</b><span>SHARED BUILDS</span><p>Level together. Take turns choosing the next perk for the entire squad.</p></article>
+          <article><b>03</b><span>LAST CHANCES</span><p>Revive fallen hunters, defend ancient structures, and steal power from the boss.</p></article>
+        </section>
+        <footer class="landing-footer"><span>ORIGINAL BROWSER PROTOTYPE · DESKTOP RECOMMENDED</span><span>NOT AFFILIATED WITH 20 MINUTES TILL DAWN</span></footer>
+      </main>
+      <dialog id="design-dialog" class="design-dialog">
+        <button class="dialog-close" aria-label="Close design notes">×</button>
+        <p class="eyebrow">DESIGN DNA</p>
+        <h2>What came from the research</h2>
+        <p><em>20 Minutes Till Dawn</em> stands apart from passive survivor-likes through directional aiming, active firing, magazines, reloads, character–weapon pairing, upgrade trees, and boss-granted power spikes.</p>
+        <p>Dawnfall keeps that active tension, then changes the decision unit from one build to a squad build: rotating perk choices, rescue play, protective auras, and fixed structures that encourage regrouping.</p>
+        <div class="dialog-rule"></div>
+        <p class="small-copy">This prototype uses original names, code, balancing, visual language, characters, enemies, and abilities.</p>
+      </dialog>
+    `
+    this.bindHomeEvents()
+  }
+
+  private bindHomeEvents() {
+    const nameInput = document.querySelector<HTMLInputElement>('#player-name')
+    const saveName = () => {
+      const value = nameInput?.value.trim().slice(0, 18) || 'Hunter'
+      this.localConfig.name = value
+      localStorage.setItem('dawnfall-player-name', value)
+    }
+    nameInput?.addEventListener('change', saveName)
+    document.querySelector('#solo-button')?.addEventListener('click', () => {
+      saveName(); this.audio.unlock(); this.mode = 'solo'; this.party = [this.localConfig]; this.renderLobby()
+    })
+    document.querySelector('#host-button')?.addEventListener('click', async () => {
+      saveName(); this.audio.unlock(); this.setFormStatus('Opening a squad room…')
+      try {
+        await this.network.host(this.localConfig)
+        this.mode = 'host'
+        this.party = [this.localConfig]
+        this.renderLobby()
+      } catch (error) {
+        this.setFormStatus(error instanceof Error ? error.message : 'Could not open a squad room.', true)
+      }
+    })
+    document.querySelector('#join-button')?.addEventListener('click', async () => {
+      saveName(); this.audio.unlock()
+      const code = document.querySelector<HTMLInputElement>('#room-code')?.value.trim().toUpperCase() ?? ''
+      if (code.length !== 6) { this.setFormStatus('Enter the six-character room code.', true); return }
+      this.setFormStatus('Finding that squad…')
+      try {
+        await this.network.join(code, this.localConfig)
+        this.mode = 'guest'
+        this.renderLobby()
+      } catch (error) {
+        this.setFormStatus(error instanceof Error ? error.message : 'Could not join that squad.', true)
+      }
+    })
+    const dialog = document.querySelector<HTMLDialogElement>('#design-dialog')
+    document.querySelector('#about-button')?.addEventListener('click', () => dialog?.showModal())
+    document.querySelector('.dialog-close')?.addEventListener('click', () => dialog?.close())
+    if (new URLSearchParams(window.location.search).has('room')) document.querySelector<HTMLInputElement>('#room-code')?.focus()
+  }
+
+  private renderLobby() {
+    this.screen = 'lobby'
+    const canStart = this.mode !== 'guest'
+    const roomCode = this.network.roomCode
+    const shareUrl = roomCode ? this.createShareUrl(roomCode) : ''
+    app.innerHTML = `
+      <main class="lobby-shell">
+        <header class="topbar">
+          <button class="wordmark button-reset" id="leave-button"><span class="sigil">◈</span> DAWNFALL <i>PROTOCOL</i></button>
+          <div class="lobby-heading"><span>${this.mode === 'solo' ? 'SOLO LOADOUT' : 'SQUAD ASSEMBLY'}</span><b>${this.party.length}/4 HUNTERS</b></div>
+        </header>
+        <div class="lobby-layout">
+          <section class="loadout-column">
+            <div class="section-heading"><span>01</span><div><h2>CHOOSE YOUR HUNTER</h2><p>Base abilities define your role before the first perk drops.</p></div></div>
+            <div class="character-grid">
+              ${CHARACTERS.map((character) => `
+                <button class="selection-card character-card ${this.localConfig.character === character.id ? 'selected' : ''}" data-character="${character.id}">
+                  <span class="card-glyph" style="--accent:${character.color}">${character.glyph}</span>
+                  <span class="card-copy"><small>${character.epithet}</small><strong>${character.name}</strong><em>${character.description}</em><b>${character.baseAbility}</b></span>
+                </button>`).join('')}
+            </div>
+            <div class="section-heading compact"><span>02</span><div><h2>CHOOSE YOUR WEAPON</h2><p>Every hunter can carry every weapon.</p></div></div>
+            <div class="weapon-grid">
+              ${WEAPONS.map((weapon) => `
+                <button class="selection-card weapon-card ${this.localConfig.weapon === weapon.id ? 'selected' : ''}" data-weapon="${weapon.id}">
+                  <span class="weapon-glyph">${weapon.glyph}</span><span><strong>${weapon.name}</strong><em>${weapon.description}</em></span>
+                  <span class="weapon-stats"><b>${weapon.damage}</b><small>DMG</small><b>${weapon.magazine}</b><small>MAG</small></span>
+                </button>`).join('')}
+            </div>
+          </section>
+          <aside class="party-column">
+            ${roomCode ? `<div class="room-card"><small>ROOM CODE</small><strong>${roomCode}</strong><button id="copy-link-button" data-url="${escapeHtml(shareUrl)}">COPY INVITE LINK</button></div>` : ''}
+            <div class="party-list">
+              <div class="aside-label">HUNTING PARTY</div>
+              ${this.party.map((player, index) => {
+                const character = characterById(player.character)
+                const weapon = weaponById(player.weapon)
+                return `<article class="party-member"><span class="party-number">0${index + 1}</span><span class="party-avatar" style="--player:${player.color}">${character.glyph}</span><div><strong>${escapeHtml(player.name)}${player.id === this.localConfig.id ? ' · YOU' : ''}</strong><small>${character.name} / ${weapon.name}</small></div><i>READY</i></article>`
+              }).join('')}
+              ${Array.from({ length: Math.max(0, 4 - this.party.length) }, (_, index) => `<article class="party-member empty"><span class="party-number">0${this.party.length + index + 1}</span><span class="party-avatar">·</span><div><strong>OPEN SLOT</strong><small>Waiting in the dark</small></div></article>`).join('')}
+            </div>
+            ${canStart ? `
+              <div class="duration-picker">
+                <div class="aside-label">NIGHT LENGTH</div>
+                <button class="duration-option ${this.duration === 240 ? 'selected' : ''}" data-duration="240"><span>FIELD TEST</span><b>04:00</b><small>All milestones compressed</small></button>
+                <button class="duration-option ${this.duration === 1200 ? 'selected' : ''}" data-duration="1200"><span>FULL NIGHT</span><b>20:00</b><small>The intended survival run</small></button>
+              </div>
+              <button class="launch-button" id="launch-button" data-testid="launch-button"><span>BEGIN THE HUNT</span><b>→</b></button>
+            ` : `<div class="waiting-card"><span class="waiting-pulse"></span><strong>WAITING FOR HOST</strong><small>The host chooses when the night begins.</small></div>`}
+            <p class="lobby-footnote">Best on desktop Chrome, Edge, Firefox, or Safari. Some strict networks may block direct WebRTC connections.</p>
+          </aside>
+        </div>
+      </main>
+      <div class="notice" id="notice" role="status"></div>
+    `
+    this.bindLobbyEvents()
+  }
+
+  private bindLobbyEvents() {
+    document.querySelector('#leave-button')?.addEventListener('click', () => { this.network.close(); window.history.replaceState({}, '', window.location.pathname); this.renderHome() })
+    document.querySelectorAll<HTMLElement>('[data-character]').forEach((button) => button.addEventListener('click', () => {
+      this.localConfig.character = button.dataset.character as PlayerConfig['character']
+      this.updateLocalLoadout()
+    }))
+    document.querySelectorAll<HTMLElement>('[data-weapon]').forEach((button) => button.addEventListener('click', () => {
+      this.localConfig.weapon = button.dataset.weapon as PlayerConfig['weapon']
+      this.updateLocalLoadout()
+    }))
+    document.querySelectorAll<HTMLElement>('[data-duration]').forEach((button) => button.addEventListener('click', () => {
+      this.duration = Number(button.dataset.duration)
+      this.renderLobby()
+    }))
+    document.querySelector('#copy-link-button')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget as HTMLButtonElement
+      try { await navigator.clipboard.writeText(button.dataset.url ?? ''); button.textContent = 'INVITE COPIED' }
+      catch { button.textContent = 'COPY FAILED — SHARE CODE' }
+    })
+    document.querySelector('#launch-button')?.addEventListener('click', () => {
+      this.audio.unlock()
+      const seed = Date.now() % 2_147_483_647
+      if (this.mode === 'host') this.network.startGame(this.duration, seed)
+      this.beginHostGame(this.party, this.duration, seed)
+    })
+  }
+
+  private updateLocalLoadout() {
+    this.party = this.party.map((player) => player.id === this.localConfig.id ? { ...this.localConfig } : player)
+    if (this.mode !== 'solo') this.network.updateConfig({ ...this.localConfig })
+    else this.renderLobby()
+  }
+
+  private beginHostGame(configs: PlayerConfig[], duration: number, seed: number) {
+    this.engine = new GameEngine(configs, duration, seed)
+    this.snapshot = this.engine.snapshot
+    this.inputs.clear()
+    this.inputs.set(this.localConfig.id, this.localInput)
+    this.renderGame()
+  }
+
+  private beginGuestGame(configs: PlayerConfig[], duration: number, seed: number) {
+    this.engine = undefined
+    this.snapshot = new GameEngine(configs, duration, seed).snapshot
+    this.renderGame()
+  }
+
+  private renderGame() {
+    this.stopGameLoop()
+    this.screen = 'game'
+    this.finishQueued = false
+    this.lastHandledEvent = 0
+    app.innerHTML = `
+      <main class="game-shell" data-testid="game-shell">
+        <canvas id="game-canvas" aria-label="Dawnfall Protocol game arena"></canvas>
+        <section class="game-hud" aria-live="off">
+          <div class="hud-top-left"><span class="hud-brand">◈ DAWNFALL</span><div id="level-readout">LV. 01</div></div>
+          <div class="timer-block"><small>UNTIL DAWN</small><strong id="timer-readout">${formatTime(this.snapshot?.timeRemaining ?? this.duration)}</strong><div class="xp-track"><i id="xp-fill"></i></div></div>
+          <button class="mute-button" id="mute-button" aria-label="Toggle sound">SOUND ON</button>
+          <div class="team-hud" id="team-hud"></div>
+          <div class="perks-hud" id="perks-hud"></div>
+          <div class="ammo-hud" id="ammo-hud"></div>
+          <div class="boss-hud" id="boss-hud"></div>
+          <div class="controls-hud"><span><kbd>WASD</kbd> MOVE</span><span><kbd>MOUSE</kbd> AIM + FIRE</span><span><kbd>E</kbd> REVIVE</span></div>
+          <div class="event-banner" id="event-banner"></div>
+          <div class="upgrade-overlay" id="upgrade-overlay"></div>
+        </section>
+      </main>
+    `
+    const canvas = document.querySelector<HTMLCanvasElement>('#game-canvas')
+    if (!canvas) throw new Error('Game canvas was not created.')
+    this.renderer = new GameRenderer(canvas)
+    this.bindGameEvents(canvas)
+    this.lastFrame = performance.now()
+    this.lastHud = 0
+    this.lastBroadcast = 0
+    this.lastInputSend = 0
+    this.animationFrame = requestAnimationFrame((time) => this.gameLoop(time))
+  }
+
+  private bindGameEvents(canvas: HTMLCanvasElement) {
+    const setKey = (event: KeyboardEvent, pressed: boolean) => {
+      const tag = (event.target as HTMLElement | null)?.tagName
+      if (tag === 'INPUT' || tag === 'BUTTON') return
+      if (['KeyW', 'ArrowUp'].includes(event.code)) this.localInput.up = pressed
+      if (['KeyS', 'ArrowDown'].includes(event.code)) this.localInput.down = pressed
+      if (['KeyA', 'ArrowLeft'].includes(event.code)) this.localInput.left = pressed
+      if (['KeyD', 'ArrowRight'].includes(event.code)) this.localInput.right = pressed
+      if (event.code === 'KeyE') this.localInput.interact = pressed
+    }
+    window.onkeydown = (event) => setKey(event, true)
+    window.onkeyup = (event) => setKey(event, false)
+    canvas.addEventListener('pointermove', (event) => { this.localInput.aim = this.renderer?.aimFromPointer(event.clientX, event.clientY) ?? 0 })
+    canvas.addEventListener('pointerdown', (event) => { if (event.button === 0) { this.audio.unlock(); this.localInput.firing = true } })
+    window.onpointerup = () => { this.localInput.firing = false }
+    canvas.addEventListener('contextmenu', (event) => event.preventDefault())
+    window.onresize = () => this.renderer?.resize()
+    document.querySelector('#mute-button')?.addEventListener('click', (event) => {
+      const muted = this.audio.toggle()
+      ;(event.currentTarget as HTMLButtonElement).textContent = muted ? 'SOUND OFF' : 'SOUND ON'
+    })
+  }
+
+  private gameLoop(time: number) {
+    if (this.screen !== 'game') return
+    const dt = Math.min(0.05, (time - this.lastFrame) / 1000)
+    this.lastFrame = time
+    this.inputs.set(this.localConfig.id, { ...this.localInput })
+
+    if (this.mode !== 'guest' && this.engine) {
+      this.snapshot = this.engine.step(dt, this.inputs)
+      if (this.mode === 'host' && time - this.lastBroadcast > 70) {
+        this.network.broadcastSnapshot(this.snapshot)
+        this.lastBroadcast = time
+      }
+    } else if (this.mode === 'guest' && time - this.lastInputSend > 45) {
+      this.network.sendInput(this.localConfig.id, { ...this.localInput })
+      this.lastInputSend = time
+    }
+
+    if (this.snapshot) {
+      this.renderer?.render(this.snapshot, this.localConfig.id)
+      if (time - this.lastHud > 80) {
+        this.updateHud(this.snapshot)
+        this.lastHud = time
+      }
+      this.handleGameEvents(this.snapshot)
+      if (!this.finishQueued && (this.snapshot.phase === 'victory' || this.snapshot.phase === 'defeat')) {
+        this.finishQueued = true
+        window.setTimeout(() => this.renderRecap(), 1800)
+      }
+    }
+    this.animationFrame = requestAnimationFrame((nextTime) => this.gameLoop(nextTime))
+  }
+
+  private updateHud(snapshot: GameSnapshot) {
+    const localPlayer = snapshot.players.find((player) => player.id === this.localConfig.id) ?? snapshot.players[0]
+    const timer = document.querySelector('#timer-readout')
+    const level = document.querySelector('#level-readout')
+    const xpFill = document.querySelector<HTMLElement>('#xp-fill')
+    if (timer) timer.textContent = formatTime(snapshot.timeRemaining)
+    if (level) level.textContent = `LV. ${snapshot.level.toString().padStart(2, '0')}`
+    if (xpFill) xpFill.style.width = `${Math.min(100, (snapshot.xp / snapshot.xpToNext) * 100)}%`
+
+    const team = document.querySelector('#team-hud')
+    if (team) team.innerHTML = snapshot.players.map((player) => `
+      <article class="team-chip ${player.downed ? 'downed' : ''} ${player.eliminated ? 'eliminated' : ''}">
+        <span style="--player:${player.color}">${characterById(player.character).glyph}</span>
+        <div><b>${escapeHtml(player.name)}</b><i><em style="width:${(player.health / player.maxHealth) * 100}%"></em></i></div>
+        <small>${player.eliminated ? 'LOST' : player.downed ? `${Math.ceil(player.downTimer)}s` : `${Math.ceil(player.health)}`}</small>
+      </article>`).join('')
+
+    const perks = document.querySelector('#perks-hud')
+    const activePerks = Object.entries(localPlayer?.perks ?? {}).filter(([, rank]) => rank > 0)
+    if (perks) perks.innerHTML = activePerks.map(([id, rank]) => `<span title="${upgradeById(id).name}">${upgradeById(id).icon}<b>${rank}</b></span>`).join('')
+
+    const ammo = document.querySelector('#ammo-hud')
+    if (ammo && localPlayer) {
+      const reloading = localPlayer.reloadRemaining > 0
+      const reloadProgress = reloading ? 1 - localPlayer.reloadRemaining / localPlayer.reloadDuration : 1
+      ammo.innerHTML = `<small>${weaponById(localPlayer.weapon).name.toUpperCase()}</small><strong>${reloading ? 'RELOAD' : `${localPlayer.ammo} / ${localPlayer.maxAmmo}`}</strong><i><em style="width:${reloadProgress * 100}%"></em></i>`
+    }
+
+    const boss = snapshot.enemies.find((enemy) => enemy.type === 'tollkeeper')
+    const bossHud = document.querySelector<HTMLElement>('#boss-hud')
+    if (bossHud) {
+      bossHud.classList.toggle('visible', Boolean(boss))
+      bossHud.innerHTML = boss ? `<span>THE TOLLKEEPER</span><i><em style="width:${(boss.health / boss.maxHealth) * 100}%"></em></i>` : ''
+    }
+    this.renderUpgrade(snapshot)
+  }
+
+  private renderUpgrade(snapshot: GameSnapshot) {
+    const overlay = document.querySelector<HTMLElement>('#upgrade-overlay')
+    if (!overlay) return
+    const offer = snapshot.upgrade
+    if (!offer || snapshot.phase !== 'upgrade') { overlay.innerHTML = ''; overlay.classList.remove('visible'); return }
+    const chooser = snapshot.players.find((player) => player.id === offer.chooserId)
+    const localChooses = offer.chooserId === this.localConfig.id
+    const offerKey = `${offer.chooserId}-${offer.ids.join('-')}`
+    if (overlay.dataset.offer === offerKey) {
+      const countdown = overlay.querySelector('[data-countdown]')
+      if (countdown) countdown.textContent = Math.ceil(offer.expiresIn).toString()
+      return
+    }
+    overlay.dataset.offer = offerKey
+    overlay.classList.add('visible')
+    overlay.innerHTML = `
+      <div class="upgrade-backdrop"></div>
+      <section class="upgrade-draft">
+        <p class="eyebrow">SQUAD LEVEL ${snapshot.level + 1}</p>
+        <h2>${localChooses ? 'CHOOSE OUR NEXT EDGE' : `${escapeHtml(chooser?.name ?? 'A hunter')} IS CHOOSING`}</h2>
+        <p>${localChooses ? 'Your choice applies to every hunter.' : 'The night is paused for the whole squad.'} Auto-pick in <b data-countdown>${Math.ceil(offer.expiresIn)}</b>s.</p>
+        <div class="upgrade-cards">
+          ${offer.ids.map((id) => {
+            const upgrade = upgradeById(id)
+            const rank = (snapshot.players[0]?.perks[id] ?? 0) + 1
+            return `<button class="upgrade-card" data-upgrade="${id}" style="--accent:${upgrade.accent}" ${localChooses ? '' : 'disabled'}><span>${upgrade.icon}</span><small>RANK ${rank}/${upgrade.maxLevel}</small><strong>${upgrade.name}</strong><em>${upgrade.description}</em><b>TAKE PERK →</b></button>`
+          }).join('')}
+        </div>
+      </section>`
+    overlay.querySelectorAll<HTMLElement>('[data-upgrade]').forEach((button) => button.addEventListener('click', () => {
+      const upgradeId = button.dataset.upgrade
+      if (!upgradeId) return
+      if (this.mode === 'guest') this.network.sendUpgrade(this.localConfig.id, upgradeId)
+      else this.engine?.chooseUpgrade(upgradeId, this.localConfig.id)
+    }))
+  }
+
+  private handleGameEvents(snapshot: GameSnapshot) {
+    for (const event of snapshot.events) {
+      if (event.id <= this.lastHandledEvent) continue
+      this.lastHandledEvent = event.id
+      this.audio.event(event.type)
+      if (event.text) {
+        const banner = document.querySelector<HTMLElement>('#event-banner')
+        if (banner) {
+          banner.textContent = event.text
+          banner.classList.remove('show')
+          void banner.offsetWidth
+          banner.classList.add('show')
+        }
+      }
+    }
+  }
+
+  private renderRecap() {
+    if (!this.snapshot) return
+    this.stopGameLoop()
+    this.screen = 'recap'
+    const won = this.snapshot.phase === 'victory'
+    const totalKills = this.snapshot.players.reduce((sum, player) => sum + player.kills, 0)
+    const totalDamage = this.snapshot.players.reduce((sum, player) => sum + player.damageDealt, 0)
+    const activePerks = Object.entries(this.snapshot.players[0]?.perks ?? {})
+    app.innerHTML = `
+      <main class="recap-shell ${won ? 'victory' : 'defeat'}">
+        <div class="recap-sigil">${won ? '☼' : '◈'}</div>
+        <p class="eyebrow">HUNT COMPLETE</p>
+        <h1>${won ? 'DAWN FOUND YOU.' : 'THE NIGHT WON.'}</h1>
+        <p>${won ? 'The squad held long enough for the first light to break.' : 'Every hunter fell before the horizon changed.'}</p>
+        <section class="recap-stats">
+          <article><small>TIME HELD</small><strong>${formatTime(this.snapshot.duration - this.snapshot.timeRemaining)}</strong></article>
+          <article><small>SQUAD LEVEL</small><strong>${this.snapshot.level}</strong></article>
+          <article><small>ENEMIES FELLED</small><strong>${totalKills}</strong></article>
+          <article><small>DAMAGE DEALT</small><strong>${Math.round(totalDamage).toLocaleString()}</strong></article>
+        </section>
+        <section class="recap-party">
+          ${this.snapshot.players.map((player) => `<article><span style="--player:${player.color}">${characterById(player.character).glyph}</span><div><strong>${escapeHtml(player.name)}</strong><small>${characterById(player.character).name} · ${weaponById(player.weapon).name}</small></div><b>${player.kills} KILLS</b><em>${Math.round(player.damageDealt).toLocaleString()} DMG</em></article>`).join('')}
+        </section>
+        <div class="recap-build"><small>FINAL SQUAD BUILD</small><div>${activePerks.length ? activePerks.map(([id, rank]) => `<span>${upgradeById(id).icon} ${upgradeById(id).name} <b>×${rank}</b></span>`).join('') : '<em>No perks secured.</em>'}</div></div>
+        <div class="recap-actions"><button class="primary-button" id="again-button">RUN IT AGAIN</button><button class="secondary-button" id="home-button">RETURN TO CAMP</button></div>
+        <p class="prototype-note">BALANCE NOTE · This is a combat-and-networking prototype. Numbers, spawn density, and WebRTC reliability need broader playtest data.</p>
+      </main>`
+    document.querySelector('#again-button')?.addEventListener('click', () => {
+      if (this.mode === 'guest') { this.network.close(); this.renderHome() }
+      else this.renderLobby()
+    })
+    document.querySelector('#home-button')?.addEventListener('click', () => { this.network.close(); this.renderHome() })
+  }
+
+  private stopGameLoop() {
+    cancelAnimationFrame(this.animationFrame)
+    this.animationFrame = 0
+    window.onkeydown = null
+    window.onkeyup = null
+    window.onpointerup = null
+    window.onresize = null
+  }
+
+  private createShareUrl(roomCode: string): string {
+    const url = new URL(window.location.href)
+    url.search = ''
+    url.hash = ''
+    url.searchParams.set('room', roomCode)
+    return url.toString()
+  }
+
+  private setFormStatus(message: string, error = false) {
+    const status = document.querySelector<HTMLElement>('#form-status')
+    if (status) { status.textContent = message; status.classList.toggle('error', error) }
+  }
+
+  private showNotice(message: string, error = false) {
+    const notice = document.querySelector<HTMLElement>('#notice') ?? document.querySelector<HTMLElement>('#form-status')
+    if (!notice) return
+    notice.textContent = message
+    notice.classList.toggle('error', error)
+    notice.classList.add('show')
+    window.setTimeout(() => notice.classList.remove('show'), 4800)
+  }
+}
+
+new DawnfallApp()
