@@ -14,7 +14,7 @@ An original 1–4 player browser survival roguelite prototype inspired by the ac
 
 ## Art direction
 
-The interface and game world use an original moonlit dark-fantasy visual system: painterly hunter portraits, strict orthographic bird's-eye character, creature, boss, and structure sprites, illustrated weapons, perk medallions, textured terrain, inked framing, and restrained gold/teal/crimson lighting. Every moving gameplay sprite is authored facing north around a centered pivot, then rotated continuously by the canvas renderer to follow aim or movement through 360 degrees. The production-ready WebP atlases live in `public/art`; CSS and the canvas renderer share those assets so the landing page, lobby, HUD, upgrade choices, and battlefield feel like one world.
+The interface uses original painterly dark-fantasy illustration, while the battlefield deliberately switches to crisp, limited-palette pixel art so static sprites remain readable in motion. Characters, creatures, bosses, and interactive structures share hard-edged runtime atlases. Every moving model uses a centered orthographic sprite authored facing east—the canvas angle-zero direction—then rotates continuously to follow aim or movement through 360 degrees. Lightweight bob, stride, and recoil transforms add motion without requiring large animation sheets. The production-ready WebP atlases live in `public/art`; shared colors and silhouettes keep the illustrated menus and pixel-art combat grounded in one world.
 
 ## Multiplayer model
 

@@ -8,13 +8,13 @@ interface Effect {
 }
 
 const TAU = Math.PI * 2
-const NORTH_FACING_SPRITE_OFFSET = Math.PI / 2
+const EAST_FACING_SPRITE_OFFSET = 0
 const CHARACTER_SPRITE_INDEX: Record<PlayerState['character'], number> = { vesper: 0, cinder: 1, bastion: 2, warden: 3 }
 const ENEMY_SPRITE_INDEX: Record<EnemyState['type'], number> = { thrall: 4, skitter: 5, spitter: 6, bulwark: 7, tollkeeper: 8 }
 
-// The production atlas is drawn facing north. Canvas angles use east as zero,
-// so this offset keeps every sprite centered and freely rotatable through 360°.
-export const spriteRotationForDirection = (direction: number) => direction + NORTH_FACING_SPRITE_OFFSET
+// Every runtime sprite is authored facing east, which is also canvas angle zero.
+// Keeping that contract explicit prevents character art and aim vectors drifting apart.
+export const spriteRotationForDirection = (direction: number) => direction - EAST_FACING_SPRITE_OFFSET
 
 export class GameRenderer {
   private readonly canvas: HTMLCanvasElement
@@ -27,6 +27,7 @@ export class GameRenderer {
   private lastFrame = performance.now()
   private lastEventId = 0
   private effects: Effect[] = []
+  private readonly enemyFacing = new Map<number, number>()
   private readonly spriteAtlas = new Image()
   private readonly structureAtlas = new Image()
   private readonly groundTexture = new Image()
@@ -161,7 +162,7 @@ export class GameRenderer {
         context.beginPath()
         context.arc(structure.x, structure.y, structure.radius * 1.18, 0, TAU)
         context.fill()
-        this.drawAtlasSprite(this.structureAtlas, 2, 2, art.index, structure.x, structure.y, art.size, art.size)
+        this.drawAtlasSprite(this.structureAtlas, 2, 2, art.index, structure.x, structure.y, art.size, art.size, 0, true)
         this.drawLabel(structure.x, structure.y + structure.radius + 18, art.label, structure.type === 'ritual-stone' ? '#e9d68f' : '#9fe4d5')
         continue
       }
@@ -251,7 +252,13 @@ export class GameRenderer {
       const color = burning ? '#ff735c' : enemy.slow > 0 ? '#9bd6ff' : '#e8eee7'
       if (this.spriteAtlas.complete && this.spriteAtlas.naturalWidth > 0) {
         const size = enemy.type === 'tollkeeper' ? 172 : enemy.type === 'bulwark' ? 116 : enemy.type === 'spitter' ? 72 : 78
-        const rotation = spriteRotationForDirection(Math.atan2(enemy.vy, enemy.vx))
+        const movement = Math.hypot(enemy.vx, enemy.vy)
+        const facing = movement > 0.1 ? Math.atan2(enemy.vy, enemy.vx) : (this.enemyFacing.get(enemy.id) ?? 0)
+        if (movement > 0.1) this.enemyFacing.set(enemy.id, facing)
+        const rotation = spriteRotationForDirection(facing)
+        const motion = Math.min(1, movement / Math.max(1, enemy.speed))
+        const stride = Math.sin(performance.now() / 88 + enemy.id * 1.73)
+        const bob = motion > 0.04 ? Math.abs(stride) * 1.8 : Math.sin(performance.now() / 310 + enemy.id) * 0.35
         context.save()
         context.fillStyle = 'rgba(0, 0, 0, .46)'
         context.beginPath()
@@ -259,7 +266,18 @@ export class GameRenderer {
         context.fill()
         context.shadowColor = burning ? '#ff593d' : enemy.slow > 0 ? '#82ceff' : enemy.type === 'tollkeeper' ? '#ef375e' : 'rgba(0,0,0,0)'
         context.shadowBlur = burning || enemy.slow > 0 ? 20 : enemy.type === 'tollkeeper' ? 16 : 0
-        this.drawAtlasSprite(this.spriteAtlas, 3, 3, ENEMY_SPRITE_INDEX[enemy.type], enemy.x, enemy.y, size, size, rotation)
+        this.drawAtlasSprite(
+          this.spriteAtlas,
+          3,
+          3,
+          ENEMY_SPRITE_INDEX[enemy.type],
+          enemy.x,
+          enemy.y - bob,
+          size * (1 - stride * 0.016 * motion),
+          size * (1 + stride * 0.022 * motion),
+          rotation,
+          true,
+        )
         context.restore()
         if (enemy.type === 'tollkeeper') {
           context.strokeStyle = `rgba(239, 113, 142, ${0.28 + Math.sin(enemy.phase * 2) * 0.08})`
@@ -348,6 +366,13 @@ export class GameRenderer {
       if (this.spriteAtlas.complete && this.spriteAtlas.naturalWidth > 0) {
         const local = player.id === localPlayerId
         const size = player.character === 'bastion' ? 94 : 86
+        const motion = Math.min(1, Math.hypot(player.vx, player.vy) / 170)
+        const spriteIndex = CHARACTER_SPRITE_INDEX[player.character]
+        const stride = Math.sin(performance.now() / 86 + spriteIndex * 1.91)
+        const bob = player.downed ? 0 : motion > 0.03 ? Math.abs(stride) * 2 : Math.sin(performance.now() / 340 + spriteIndex) * 0.45
+        const recoil = player.fireCooldown > 0 && !player.downed ? Math.min(2.4, player.fireCooldown * 14) : 0
+        const spriteX = player.x - Math.cos(player.aim) * recoil
+        const spriteY = player.y - Math.sin(player.aim) * recoil - bob
         context.save()
         context.fillStyle = 'rgba(0, 0, 0, .48)'
         context.beginPath()
@@ -369,9 +394,20 @@ export class GameRenderer {
         }
         context.globalAlpha = player.downed ? 0.48 : 1
         context.shadowColor = player.color
-        context.shadowBlur = local ? 18 : 9
+        context.shadowBlur = local ? 12 : 6
         const rotation = spriteRotationForDirection(player.aim)
-        this.drawAtlasSprite(this.spriteAtlas, 3, 3, CHARACTER_SPRITE_INDEX[player.character], player.x, player.y, size, size, rotation)
+        this.drawAtlasSprite(
+          this.spriteAtlas,
+          3,
+          3,
+          spriteIndex,
+          spriteX,
+          spriteY,
+          size * (1 - stride * 0.015 * motion),
+          size * (1 + stride * 0.02 * motion),
+          rotation,
+          true,
+        )
         context.restore()
         if (player.downed) {
           context.strokeStyle = '#ef718e'
@@ -505,6 +541,7 @@ export class GameRenderer {
     width: number,
     height: number,
     rotation = 0,
+    pixelated = false,
   ) {
     const context = this.context
     const sourceWidth = image.naturalWidth / columns
@@ -512,6 +549,7 @@ export class GameRenderer {
     const column = index % columns
     const row = Math.floor(index / columns)
     context.save()
+    if (pixelated) context.imageSmoothingEnabled = false
     context.translate(x, y)
     context.rotate(rotation)
     context.drawImage(

@@ -48,15 +48,15 @@ describe('GameEngine', () => {
 
 describe('top-down sprite rotation', () => {
   it.each([
-    ['east', 0, Math.PI / 2],
-    ['south', Math.PI / 2, Math.PI],
-    ['west', Math.PI, Math.PI * 1.5],
-    ['north', -Math.PI / 2, 0],
-  ])('rotates a north-facing atlas sprite toward %s', (_label, direction, expected) => {
+    ['east', 0, 0],
+    ['south', Math.PI / 2, Math.PI / 2],
+    ['west', Math.PI, Math.PI],
+    ['north', -Math.PI / 2, -Math.PI / 2],
+  ])('rotates an east-facing atlas sprite toward %s', (_label, direction, expected) => {
     expect(spriteRotationForDirection(direction)).toBeCloseTo(expected)
   })
 
   it('preserves arbitrary analog aim angles without snapping', () => {
-    expect(spriteRotationForDirection(0.731)).toBeCloseTo(0.731 + Math.PI / 2)
+    expect(spriteRotationForDirection(0.731)).toBeCloseTo(0.731)
   })
 })
