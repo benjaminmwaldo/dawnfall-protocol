@@ -6,7 +6,8 @@ An original 1–4 player browser survival roguelite prototype inspired by the ac
 
 - Move with WASD and aim/fire with the mouse.
 - Choose one of eight hunters and three weapons.
-- Collect personal experience and shape an individual build from 24 common perks plus four signature upgrades for every hunter.
+- Fill one shared squad XP track, then let every active hunter choose simultaneously from three personal upgrades with three rerolls.
+- Shape individual builds from 24 one-rank common transformations plus five signature upgrades for every hunter, including a unique combat companion.
 - Revive downed teammates with E before their fifteen-second bleedout ends.
 - If you are eliminated while allies remain, cycle between them with Q/E or the spectator controls.
 - Use the Moonwell, Ward Tower, and Ritual Stone to regroup.

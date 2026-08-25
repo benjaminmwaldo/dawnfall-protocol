@@ -2,6 +2,7 @@ import { BOSS_NAMES, UPGRADES, isBoss, teamBuffByBoss, upgradeById, weaponById }
 import { SeededRandom } from './random'
 import type {
   BossType,
+  CompanionKind,
   EnemyState,
   EnemyType,
   GameEvent,
@@ -30,8 +31,22 @@ const distanceSquared = (ax: number, ay: number, bx: number, by: number) => {
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 const rank = (player: PlayerState | undefined, id: string) => player?.perks[id] ?? 0
 const xpRequiredForLevel = (level: number, partySize: number) => Math.floor(
-  75 * Math.pow(1.22, Math.max(0, level - 1)) * (1 + Math.max(0, partySize - 1) * 0.42),
+  115 * Math.pow(1.32, Math.max(0, level - 1)) * (1 + Math.max(0, partySize - 1) * 0.45),
 )
+const PET_UPGRADES: Partial<Record<string, CompanionKind>> = {
+  gravewing: 'gravewing', ashkit: 'ashkit', 'aegis-hound': 'aegis-hound', 'mercy-moth': 'mercy-moth',
+  shadecat: 'shadecat', 'storm-wisp': 'storm-wisp', thornling: 'thornling', sunbird: 'sunbird',
+}
+const COMPANION_ATTACKS: Record<CompanionKind, { cooldown: number; damage: number; speed: number; range: number; pierce: number; chain: number; burn: boolean; color: string }> = {
+  gravewing: { cooldown: 1.05, damage: 90, speed: 780, range: 470, pierce: 0, chain: 1, burn: false, color: '#f2d479' },
+  ashkit: { cooldown: 0.72, damage: 42, speed: 660, range: 350, pierce: 0, chain: 1, burn: true, color: '#ff735c' },
+  'aegis-hound': { cooldown: 1.2, damage: 58, speed: 520, range: 310, pierce: 3, chain: 0, burn: false, color: '#74d8c2' },
+  'mercy-moth': { cooldown: 1.35, damage: 30, speed: 600, range: 370, pierce: 0, chain: 1, burn: false, color: '#c9b9ff' },
+  shadecat: { cooldown: 0.58, damage: 72, speed: 920, range: 300, pierce: 2, chain: 0, burn: false, color: '#7f8cff' },
+  'storm-wisp': { cooldown: 0.95, damage: 44, speed: 680, range: 420, pierce: 0, chain: 3, burn: false, color: '#65bfff' },
+  thornling: { cooldown: 0.82, damage: 52, speed: 560, range: 320, pierce: 1, chain: 0, burn: false, color: '#e45d82' },
+  sunbird: { cooldown: 0.78, damage: 66, speed: 860, range: 440, pierce: 3, chain: 0, burn: false, color: '#ffd783' },
+}
 
 export class GameEngine {
   readonly snapshot: GameSnapshot
@@ -50,6 +65,7 @@ export class GameEngine {
       timeRemaining: duration,
       duration,
       players: configs.map((config, index) => this.createPlayer(config, index, configs.length)),
+      companions: [],
       enemies: [],
       projectiles: [],
       pickups: [],
@@ -83,6 +99,7 @@ export class GameEngine {
     }
 
     this.updatePlayers(delta, inputs)
+    this.updateCompanions(delta)
     this.updateStructures(delta)
     this.handleSpawns(delta)
     this.updateEnemies(delta)
@@ -109,11 +126,12 @@ export class GameEngine {
     const current = rank(player, upgradeId)
     if (current >= definition.maxLevel) return false
     player.perks[upgradeId] = current + 1
-    if (upgradeId === 'vitality') this.addMaximumHealth(player, 25)
-    if (upgradeId === 'iron-heart') this.addMaximumHealth(player, 15)
-    if (upgradeId === 'unyielding') this.addMaximumHealth(player, 30)
-    if (upgradeId === 'deep-mag') this.addMagazine(player, 0.25)
-    if (upgradeId === 'charged-mag') this.addMagazine(player, 0.2)
+    if (upgradeId === 'vitality') this.addMaximumHealth(player, 50)
+    if (upgradeId === 'unyielding') this.addMaximumHealth(player, 60)
+    if (upgradeId === 'deep-mag') this.addMagazine(player, 0.5)
+    if (upgradeId === 'charged-mag') this.addMagazine(player, 0.4)
+    const companionKind = PET_UPGRADES[upgradeId]
+    if (companionKind) this.summonCompanion(player, companionKind)
 
     offer.selectedId = upgradeId
     this.pushEvent('level', player.x, player.y, `${player.name.toUpperCase()} LOCKED ${definition.name.toUpperCase()}`)
@@ -131,6 +149,20 @@ export class GameEngine {
       this.snapshot.phase = 'playing'
       this.pushEvent('level', undefined, undefined, `SQUAD LEVEL ${nextLevel} · EVERY BUILD ADVANCED`)
     }
+    return true
+  }
+
+  rerollUpgrade(chooserId: string): boolean {
+    const draft = this.snapshot.upgrade
+    const offer = draft?.offers.find((entry) => entry.chooserId === chooserId)
+    const player = this.snapshot.players.find((entry) => entry.id === chooserId)
+    if (!draft || !offer || offer.selectedId || !player || offer.rerollsLeft <= 0 || this.snapshot.phase !== 'upgrade') return false
+    const nextChoices = this.createUpgradeChoices(player, new Set(offer.ids))
+    if (nextChoices.length !== 3) return false
+    offer.ids = nextChoices
+    offer.rerollsLeft -= 1
+    draft.expiresIn = Math.max(draft.expiresIn, 6)
+    this.pushEvent('level', player.x, player.y, `${player.name.toUpperCase()} REROLLED · ${offer.rerollsLeft} LEFT`)
     return true
   }
 
@@ -201,9 +233,11 @@ export class GameEngine {
       moveX /= magnitude
       moveY /= magnitude
       const burningNearby = player.character === 'cinder' && rank(player, 'ash-step') > 0 && this.snapshot.enemies.some((enemy) => enemy.burn > 0 && distanceSquared(player.x, player.y, enemy.x, enemy.y) < 260 * 260)
-      const moveMultiplier = Math.pow(1.12, rank(player, 'fleetfoot'))
+      const lastStand = rank(player, 'iron-heart') > 0 && player.health <= player.maxHealth * 0.5
+      const moveMultiplier = Math.pow(1.25, rank(player, 'fleetfoot'))
         * Math.pow(1.12, this.snapshot.teamBuffs['eclipse-stride'] ?? 0)
-        * (burningNearby ? 1 + rank(player, 'ash-step') * 0.1 : 1)
+        * (burningNearby ? 1.35 : 1)
+        * (lastStand ? 1.2 : 1)
         * (player.hasteRemaining > 0 ? 1.22 : 1)
       const speed = 176 * moveMultiplier
       player.vx = moveX * speed
@@ -223,9 +257,9 @@ export class GameEngine {
 
       const nearAlly = this.snapshot.players.some((ally) => ally.id !== player.id && !ally.downed && !ally.eliminated && distanceSquared(player.x, player.y, ally.x, ally.y) < 150 * 150)
       const awakenedWarden = this.snapshot.players.find((ally) => ally.character === 'warden' && ally.awakened && !ally.eliminated)
-      const regeneration = (nearAlly ? rank(player, 'sanctuary') * 0.7 : 0)
-        + (awakenedWarden ? 0.55 + rank(awakenedWarden, 'lantern-grace') * 0.42 : 0)
-        + (player.character === 'seraph' ? rank(player, 'dawn-armor') * 0.12 : 0)
+      const regeneration = (nearAlly ? rank(player, 'sanctuary') * 2.5 : 0)
+        + (awakenedWarden ? 0.55 + rank(awakenedWarden, 'lantern-grace') * 2 : 0)
+        + (player.character === 'seraph' ? rank(player, 'dawn-armor') * 1.5 : 0)
       if (regeneration > 0) player.health = Math.min(player.maxHealth, player.health + dt * regeneration)
     }
   }
@@ -237,11 +271,13 @@ export class GameEngine {
 
     const ritualBoost = this.snapshot.structures.some((structure) => structure.type === 'ritual-stone' && distanceSquared(player.x, player.y, structure.x, structure.y) < structure.radius * structure.radius)
     const emptyMagazineRatio = 1 - player.ammo / Math.max(1, player.maxAmmo)
+    const burningNearby = player.character === 'cinder' && rank(player, 'ash-step') > 0 && this.snapshot.enemies.some((enemy) => enemy.burn > 0 && distanceSquared(player.x, player.y, enemy.x, enemy.y) < 260 * 260)
     const fireRate = weapon.fireRate
-      * Math.pow(1.15, rank(player, 'barrage'))
-      * (1 + emptyMagazineRatio * rank(player, 'relentless') * 0.1)
-      * (1 + rank(player, 'charged-mag') * 0.12)
+      * Math.pow(1.32, rank(player, 'barrage'))
+      * (1 + emptyMagazineRatio * rank(player, 'relentless') * 0.6)
+      * (1 + rank(player, 'charged-mag') * 0.35)
       * Math.pow(1.12, this.snapshot.teamBuffs['quicksilver-bell'] ?? 0)
+      * (burningNearby ? 1.35 : 1)
       * (ritualBoost ? 1.25 : 1)
     player.fireCooldown = 1 / fireRate
     player.ammo -= 1
@@ -254,30 +290,32 @@ export class GameEngine {
       const offset = projectileCount === 1 ? 0 : (index / (projectileCount - 1) - 0.5) * totalSpread
       const jitter = this.random.range(-weapon.spread * 0.08, weapon.spread * 0.08)
       const angle = player.aim + offset + jitter
-      const cadence = player.character === 'vesper' ? Math.max(2, 6 - rank(player, 'deadeye-rhythm') - (player.awakened ? 2 : 0)) : 0
+      const cadence = player.character === 'vesper' ? Math.max(2, 6 - rank(player, 'deadeye-rhythm') * 2 - (player.awakened ? 2 : 0)) : 0
       const forcedCritical = cadence > 0 && player.shotCount % cadence === 0
       const still = Math.hypot(player.vx, player.vy) < 8
-      const criticalChance = 0.06 + rank(player, 'overcharge') * 0.09
+      const criticalChance = 0.06 + rank(player, 'overcharge') * 0.2
         + (player.character === 'seraph' ? 0.08 : 0)
-        + rank(player, 'halo-crit') * 0.07
-        + (still ? rank(player, 'stillness') * 0.06 : 0)
+        + rank(player, 'halo-crit') * 0.18
+        + (still ? rank(player, 'stillness') * 0.18 : 0)
       const critical = forcedCritical || this.random.next() < criticalChance
       const damagePenalty = Math.pow(0.88, rank(player, 'double-tap')) * Math.pow(0.92, rank(player, 'twin-fangs'))
+      const lastStand = rank(player, 'iron-heart') > 0 && player.health <= player.maxHealth * 0.5
       const baseDamage = weapon.damage
-        * Math.pow(1.22, rank(player, 'heavy-caliber'))
-        * Math.pow(1.08, rank(player, 'longshot'))
-        * Math.pow(1.12, rank(player, 'veilshot'))
-        * Math.pow(1.12, rank(player, 'sunlance'))
+        * Math.pow(1.45, rank(player, 'heavy-caliber'))
+        * Math.pow(1.18, rank(player, 'longshot'))
+        * Math.pow(1.3, rank(player, 'veilshot'))
+        * Math.pow(1.25, rank(player, 'sunlance'))
         * Math.pow(1.15, this.snapshot.teamBuffs['grave-edge'] ?? 0)
-        * (still ? Math.pow(1.1, rank(player, 'stillness')) : 1)
+        * (still ? Math.pow(1.4, rank(player, 'stillness')) : 1)
+        * (lastStand ? 1.35 : 1)
         * damagePenalty
       const criticalMultiplier = 2.2
-        * Math.pow(1.35, rank(player, 'golden-bullet'))
-        * Math.pow(1.2, rank(player, 'halo-crit'))
+        * Math.pow(1.75, rank(player, 'golden-bullet'))
+        * Math.pow(1.5, rank(player, 'halo-crit'))
         * (critical && player.character === 'seraph' && player.awakened ? 1.2 : 1)
       const projectileSpeed = weapon.speed
-        * Math.pow(1.18, rank(player, 'longshot'))
-        * Math.pow(1.14, rank(player, 'sunlance'))
+        * Math.pow(1.35, rank(player, 'longshot'))
+        * Math.pow(1.35, rank(player, 'sunlance'))
         * (player.character === 'seraph' ? 1.15 : 1)
       const projectile: ProjectileState = {
         id: this.entityId++,
@@ -286,17 +324,17 @@ export class GameEngine {
         y: player.y + Math.sin(angle) * 20,
         vx: Math.cos(angle) * projectileSpeed,
         vy: Math.sin(angle) * projectileSpeed,
-        radius: (critical ? 5.2 : 3.5) * Math.pow(1.12, rank(player, 'heavy-caliber')) * Math.pow(1.12, rank(player, 'rose-thorns')),
+        radius: (critical ? 5.2 : 3.5) * Math.pow(1.25, rank(player, 'heavy-caliber')) * Math.pow(1.35, rank(player, 'rose-thorns')),
         damage: baseDamage * (critical ? criticalMultiplier : 1),
-        life: (weapon.id === 'scattergun' ? 0.58 : 1.25) * Math.pow(1.28, rank(player, 'ghost-rounds')),
-        pierce: weapon.pierce + rank(player, 'piercing-rounds') + rank(player, 'veilshot') + rank(player, 'rose-thorns')
-          + (rank(player, 'ghost-rounds') >= 2 ? 1 : 0)
+        life: (weapon.id === 'scattergun' ? 0.58 : 1.25) * Math.pow(1.65, rank(player, 'ghost-rounds')),
+        pierce: weapon.pierce + rank(player, 'piercing-rounds') * 2 + rank(player, 'veilshot') * 2 + rank(player, 'rose-thorns') * 2
+          + rank(player, 'ghost-rounds') * 2
           + (forcedCritical && player.awakened ? 1 : 0)
           + (critical && player.character === 'seraph' && player.awakened ? 1 : 0),
         bounces: 0,
         enemy: false,
-        chain: weapon.chain + rank(player, 'static-link') + rank(player, 'ricochet-oath')
-          + (player.character === 'tempest' ? 1 : 0) + rank(player, 'stormchain'),
+        chain: weapon.chain + rank(player, 'static-link') * 2 + rank(player, 'ricochet-oath') * 2
+          + (player.character === 'tempest' ? 1 : 0) + rank(player, 'stormchain') * 2,
         burn: player.character === 'cinder' || rank(player, 'combustion') > 0,
         color: critical ? '#fff2ad' : player.color,
       }
@@ -309,8 +347,46 @@ export class GameEngine {
 
   private startReload(player: PlayerState) {
     const weapon = weaponById(player.weapon)
-    player.reloadDuration = weapon.reload * Math.pow(0.82, rank(player, 'quick-hands')) * Math.pow(0.88, this.snapshot.teamBuffs['quicksilver-bell'] ?? 0)
+    player.reloadDuration = weapon.reload * Math.pow(0.58, rank(player, 'quick-hands')) * Math.pow(0.88, this.snapshot.teamBuffs['quicksilver-bell'] ?? 0)
     player.reloadRemaining = player.reloadDuration
+  }
+
+  private updateCompanions(dt: number) {
+    for (const companion of this.snapshot.companions) {
+      const owner = this.snapshot.players.find((player) => player.id === companion.ownerId)
+      if (!owner || owner.eliminated) continue
+      companion.phase += dt * 1.5
+      companion.attackCooldown -= dt
+      const orbit = companion.phase + companion.id * 1.37
+      const desiredX = owner.x + Math.cos(orbit) * 54
+      const desiredY = owner.y + Math.sin(orbit) * 40
+      companion.vx = (desiredX - companion.x) * 7
+      companion.vy = (desiredY - companion.y) * 7
+      companion.x += companion.vx * dt
+      companion.y += companion.vy * dt
+
+      const attack = COMPANION_ATTACKS[companion.kind]
+      const target = this.nearestEnemy(companion.x, companion.y, attack.range)
+      if (!target) {
+        if (Math.hypot(companion.vx, companion.vy) > 1) companion.aim = Math.atan2(companion.vy, companion.vx)
+        continue
+      }
+      companion.aim = Math.atan2(target.y - companion.y, target.x - companion.x)
+      if (companion.attackCooldown > 0) continue
+      if (companion.kind === 'mercy-moth') this.heal(owner, 3)
+      if (companion.kind === 'thornling') this.heal(owner, 2)
+      const projectile: ProjectileState = {
+        id: this.entityId++, ownerId: owner.id, x: companion.x, y: companion.y,
+        vx: Math.cos(companion.aim) * attack.speed, vy: Math.sin(companion.aim) * attack.speed,
+        radius: companion.kind === 'aegis-hound' || companion.kind === 'sunbird' ? 5.5 : 4,
+        damage: attack.damage, life: 0.9, pierce: attack.pierce, bounces: 0, enemy: false,
+        chain: attack.chain, burn: attack.burn, color: attack.color,
+      }
+      this.snapshot.projectiles.push(projectile)
+      this.projectileHits.set(projectile.id, new Set())
+      companion.attackCooldown = attack.cooldown
+      this.pushEvent('shot', companion.x, companion.y)
+    }
   }
 
   private updateStructures(dt: number) {
@@ -406,7 +482,7 @@ export class GameEngine {
         enemy.burnTick -= dt
         if (enemy.burnTick <= 0) {
           const owner = this.snapshot.players.find((player) => player.id === enemy.burnOwner)
-          const burnDamage = (5 + rank(owner, 'combustion') * 4) * Math.pow(1.45, rank(owner, 'white-flame'))
+          const burnDamage = (5 + rank(owner, 'combustion') * 9) * Math.pow(2.2, rank(owner, 'white-flame'))
           this.damageEnemy(enemy, burnDamage, enemy.burnOwner)
           enemy.burnTick = 0.5
         }
@@ -485,7 +561,7 @@ export class GameEngine {
         if (projectile.burn && enemy.health > 0) { enemy.burn = 2.5; enemy.burnOwner = projectile.ownerId }
         const owner = this.snapshot.players.find((player) => player.id === projectile.ownerId)
         const frostRank = rank(owner, 'frostbite')
-        if (frostRank > 0) enemy.slow = 0.8 + frostRank * 0.35
+        if (frostRank > 0) enemy.slow = 2
         if (projectile.chain > 0) this.arcDamage(enemy, projectile, hits)
         projectile.pierce -= 1
         if (projectile.pierce < 0) projectile.life = 0
@@ -501,7 +577,7 @@ export class GameEngine {
   private arcDamage(origin: EnemyState, projectile: ProjectileState, alreadyHit: Set<number>) {
     const owner = this.snapshot.players.find((player) => player.id === projectile.ownerId)
     const range = owner?.character === 'tempest' && owner.awakened ? 190 : 150
-    const retention = 0.52 + rank(owner, 'thunderhead') * 0.1 + (owner?.character === 'tempest' && owner.awakened ? 0.1 : 0)
+    const retention = 0.52 + rank(owner, 'thunderhead') * 0.28 + (owner?.character === 'tempest' && owner.awakened ? 0.1 : 0)
     const candidates = this.snapshot.enemies
       .filter((enemy) => enemy.health > 0 && !alreadyHit.has(enemy.id) && distanceSquared(origin.x, origin.y, enemy.x, enemy.y) < range * range)
       .sort((a, b) => distanceSquared(origin.x, origin.y, a.x, a.y) - distanceSquared(origin.x, origin.y, b.x, b.y))
@@ -509,7 +585,7 @@ export class GameEngine {
     for (const target of candidates) {
       alreadyHit.add(target.id)
       this.damageEnemy(target, projectile.damage * retention, projectile.ownerId)
-      if (rank(owner, 'ball-lightning') > 0) target.slow = Math.max(target.slow, 1 + rank(owner, 'ball-lightning') * 0.5)
+      if (rank(owner, 'ball-lightning') > 0) target.slow = Math.max(target.slow, 2.5)
       this.pushEvent('hit', target.x, target.y)
     }
   }
@@ -518,8 +594,8 @@ export class GameEngine {
     if (enemy.health <= 0) return
     const owner = this.snapshot.players.find((player) => player.id === ownerId)
     let finalAmount = amount
-    if (owner && enemy.health / enemy.maxHealth < 0.38) finalAmount *= Math.pow(1.18, rank(owner, 'hollow-points'))
-    if (owner && isBoss(enemy.type)) finalAmount *= Math.pow(1.2, rank(owner, 'executioner'))
+    if (owner && enemy.health / enemy.maxHealth < 0.45) finalAmount *= Math.pow(1.5, rank(owner, 'hollow-points'))
+    if (owner && isBoss(enemy.type)) finalAmount *= Math.pow(1.6, rank(owner, 'executioner'))
     enemy.health -= finalAmount
     if (owner) owner.damageDealt += finalAmount
     this.pushEvent('hit', enemy.x, enemy.y)
@@ -527,9 +603,14 @@ export class GameEngine {
 
     if (owner) {
       owner.kills += 1
-      if (owner.character === 'briar') this.heal(owner, owner.maxHealth * (0.006 + rank(owner, 'bloodbloom') * 0.006) * (owner.awakened ? 2 : 1))
-      if (owner.character === 'nyx' && rank(owner, 'night-harvest') > 0 && owner.kills % 10 === 0) { this.heal(owner, 5 + rank(owner, 'night-harvest') * 4); owner.hasteRemaining = 4 }
-      if (owner.character === 'cinder' && rank(owner, 'phoenix-round') > 0 && owner.kills % 20 === 0) this.heal(owner, 8 + rank(owner, 'phoenix-round') * 5)
+      if (owner.character === 'briar') this.heal(owner, owner.maxHealth * (0.006 + rank(owner, 'bloodbloom') * 0.012) * (owner.awakened ? 2 : 1))
+      if (owner.character === 'nyx' && rank(owner, 'night-harvest') > 0 && owner.kills % 8 === 0) { this.heal(owner, 15); owner.hasteRemaining = 5 }
+      if (owner.character === 'cinder' && rank(owner, 'phoenix-round') > 0 && owner.kills % 12 === 0) {
+        this.heal(owner, 25)
+        for (const nearby of [...this.snapshot.enemies]) {
+          if (nearby.id !== enemy.id && nearby.health > 0 && distanceSquared(enemy.x, enemy.y, nearby.x, nearby.y) < 170 * 170) this.damageEnemy(nearby, 60, owner.id)
+        }
+      }
     }
     const values: Record<EnemyType, number> = { thrall: 4, skitter: 3, spitter: 6, bulwark: 10, wraith: 6, charger: 8, hexer: 8, leech: 4, tollkeeper: 75, broodmother: 85, graveknight: 95, 'eclipse-eye': 110 }
     const pickup: PickupState = { id: this.entityId++, x: enemy.x, y: enemy.y, value: values[enemy.type] }
@@ -537,10 +618,10 @@ export class GameEngine {
 
     if (isBoss(enemy.type)) this.rewardBoss(enemy.type)
     const burnOwner = this.snapshot.players.find((player) => player.id === enemy.burnOwner)
-    if (burnOwner?.character === 'cinder' && burnOwner.awakened) {
-      const explosionRank = rank(burnOwner, 'flashpoint')
-      const explosionRange = 90 + explosionRank * 28
-      const explosionDamage = 32 * Math.pow(1.4, explosionRank)
+    if (burnOwner && (rank(burnOwner, 'combustion') > 0 || (burnOwner.character === 'cinder' && (burnOwner.awakened || rank(burnOwner, 'flashpoint') > 0)))) {
+      const flashpoint = burnOwner.character === 'cinder' && rank(burnOwner, 'flashpoint') > 0
+      const explosionRange = flashpoint ? 180 : burnOwner.awakened && burnOwner.character === 'cinder' ? 118 : 95
+      const explosionDamage = flashpoint ? 75 : burnOwner.awakened && burnOwner.character === 'cinder' ? 42 : 28
       for (const nearby of [...this.snapshot.enemies]) {
         if (nearby.id !== enemy.id && nearby.health > 0 && distanceSquared(enemy.x, enemy.y, nearby.x, nearby.y) < explosionRange * explosionRange) this.damageEnemy(nearby, explosionDamage, burnOwner.id)
       }
@@ -549,8 +630,8 @@ export class GameEngine {
 
   private damagePlayer(player: PlayerState, amount: number) {
     if (player.invulnerable > 0 || player.downed || player.eliminated) return
-    const evadeChance = rank(player, 'afterimage') * 0.05
-      + (player.character === 'nyx' ? (player.awakened ? 0.28 : 0.16) + rank(player, 'shadow-step') * 0.07 : 0)
+    const evadeChance = rank(player, 'afterimage') * 0.12
+      + (player.character === 'nyx' ? (player.awakened ? 0.28 : 0.16) + rank(player, 'shadow-step') * 0.14 : 0)
     if (this.random.next() < evadeChance) {
       player.invulnerable = 0.42
       if (player.character === 'nyx' && player.awakened) player.hasteRemaining = 1.8
@@ -559,24 +640,24 @@ export class GameEngine {
     }
     const bastion = this.snapshot.players.find((ally) => {
       if (ally.character !== 'bastion' || ally.downed || ally.eliminated) return false
-      const range = (ally.awakened ? 300 : 150) + rank(ally, 'aegis-lattice') * 35
+      const range = (ally.awakened ? 300 : 150) + rank(ally, 'aegis-lattice') * 100
       return distanceSquared(player.x, player.y, ally.x, ally.y) < range * range
     })
-    const auraReduction = bastion ? (bastion.awakened ? 0.32 : 0.18) + rank(bastion, 'aegis-lattice') * 0.04 : 0
-    const personalReduction = rank(player, 'steadfast') * 0.08 + rank(player, 'dawn-armor') * 0.07
-      + (player.reloadRemaining > 0 ? rank(player, 'shielded-mag') * 0.09 : 0)
+    const auraReduction = bastion ? (bastion.awakened ? 0.32 : 0.18) + rank(bastion, 'aegis-lattice') * 0.12 : 0
+    const personalReduction = rank(player, 'steadfast') * 0.2 + rank(player, 'dawn-armor') * 0.2
+      + (player.reloadRemaining > 0 ? rank(player, 'shielded-mag') * 0.35 : 0)
     const finalDamage = amount * Math.max(0.3, 1 - auraReduction - personalReduction)
     player.health -= finalDamage
-    player.invulnerable = 0.58 + rank(player, 'kinetic-shell') * 0.12
+    player.invulnerable = 0.58 + rank(player, 'kinetic-shell') * 0.37
     this.pushEvent('hurt', player.x, player.y)
 
     if (player.character === 'bastion' && rank(player, 'retaliation') > 0) {
-      const targets = this.snapshot.enemies.filter((enemy) => enemy.health > 0 && distanceSquared(player.x, player.y, enemy.x, enemy.y) < 125 * 125).slice(0, 8)
-      for (const target of targets) this.damageEnemy(target, 9 + rank(player, 'retaliation') * 7, player.id)
+      const targets = this.snapshot.enemies.filter((enemy) => enemy.health > 0 && distanceSquared(player.x, player.y, enemy.x, enemy.y) < 150 * 150).slice(0, 16)
+      for (const target of targets) this.damageEnemy(target, 55, player.id)
     }
     if (player.character === 'briar' && rank(player, 'thorn-crown') > 0) {
       const target = this.nearestEnemy(player.x, player.y, 105)
-      if (target) this.damageEnemy(target, finalDamage * rank(player, 'thorn-crown') * 0.38, player.id)
+      if (target) this.damageEnemy(target, finalDamage * rank(player, 'thorn-crown') * 0.65, player.id)
     }
     if (player.health > 0) return
     if (player.character === 'warden' && rank(player, 'soulward') > 0 && !player.soulwardUsed) {
@@ -588,7 +669,7 @@ export class GameEngine {
     }
     player.health = 0
     player.downed = true
-    player.downTimer = 15 + rank(player, 'unyielding') * 5
+    player.downTimer = 15 + rank(player, 'unyielding') * 8
     player.reviveProgress = 0
   }
 
@@ -596,7 +677,7 @@ export class GameEngine {
     for (const pickup of this.snapshot.pickups) {
       for (const player of this.snapshot.players) {
         if (player.downed || player.eliminated) continue
-        const magnet = 62 * Math.pow(1.45, rank(player, 'soul-magnet')) * Math.pow(1.2, this.snapshot.teamBuffs['eclipse-stride'] ?? 0)
+        const magnet = 62 * Math.pow(2.25, rank(player, 'soul-magnet')) * Math.pow(1.2, this.snapshot.teamBuffs['eclipse-stride'] ?? 0)
         const distance = Math.sqrt(distanceSquared(pickup.x, pickup.y, player.x, player.y))
         if (distance < magnet * 2.4 && distance > 1) {
           const speed = 110 + (magnet * 2.4 - distance) * 2.2
@@ -604,10 +685,10 @@ export class GameEngine {
           pickup.y += (player.y - pickup.y) / distance * speed * dt
         }
         if (distance < 22) {
-          const multiplier = 1 + rank(player, 'scavenger') * 0.15 + rank(player, 'red-harvest') * 0.2
+          const multiplier = 1 + rank(player, 'scavenger') * 0.4 + rank(player, 'red-harvest') * 0.35
           const sharedXp = Math.max(1, Math.round(pickup.value * multiplier))
           for (const squadmate of this.snapshot.players) squadmate.xp += sharedXp
-          if (rank(player, 'red-harvest') > 0) this.heal(player, rank(player, 'red-harvest') * 0.35)
+          if (rank(player, 'red-harvest') > 0) this.heal(player, 2)
           pickup.value = 0
           break
         }
@@ -623,16 +704,16 @@ export class GameEngine {
         return !player.downed && !player.eliminated && input.interact && distanceSquared(player.x, player.y, downed.x, downed.y) < 68 * 68
       })
       if (!reviver) { downed.reviveProgress = Math.max(0, downed.reviveProgress - dt * 0.35); continue }
-      const reviveSpeed = (reviver.character === 'warden' ? 1.5 : 1) * (1 + rank(reviver, 'merciful-hand') * 0.35)
+      const reviveSpeed = (reviver.character === 'warden' ? 1.5 : 1) * (rank(reviver, 'merciful-hand') > 0 ? 2 : 1)
       downed.reviveProgress += dt * reviveSpeed
       if (downed.reviveProgress >= 2.2) {
         downed.downed = false
         const lastRite = rank(reviver, 'last-rite')
-        downed.health = downed.maxHealth * (0.5 + lastRite * 0.15)
-        downed.downTimer = 15 + rank(downed, 'unyielding') * 5
+        downed.health = downed.maxHealth * (lastRite > 0 ? 1 : 0.5)
+        downed.downTimer = 15 + rank(downed, 'unyielding') * 8
         downed.reviveProgress = 0
         downed.invulnerable = 2 + lastRite
-        downed.hasteRemaining = lastRite > 0 ? 4 : 0
+        downed.hasteRemaining = lastRite > 0 ? 6 : 0
         this.pushEvent('revive', downed.x, downed.y, `${reviver.name.toUpperCase()} PULLED ${downed.name.toUpperCase()} BACK`)
       }
     }
@@ -644,7 +725,7 @@ export class GameEngine {
     if (!leader || leader.xp < leader.xpToNext) return
     const offers = this.snapshot.players
       .filter((player) => !player.eliminated)
-      .map((player) => ({ chooserId: player.id, ids: this.createUpgradeChoices(player) }))
+      .map((player) => ({ chooserId: player.id, ids: this.createUpgradeChoices(player), rerollsLeft: 3 }))
       .filter((offer) => offer.ids.length > 0)
     if (offers.length === 0) return
     this.snapshot.upgrade = { level: leader.level, offers, expiresIn: 20 }
@@ -652,17 +733,15 @@ export class GameEngine {
     this.pushEvent('level', undefined, undefined, `SQUAD LEVEL READY · ${offers.length} BUILDS ARE BRANCHING`)
   }
 
-  private createUpgradeChoices(player: PlayerState): string[] {
-    const signaturePool = UPGRADES.filter((upgrade) => upgrade.character === player.character && rank(player, upgrade.id) < upgrade.maxLevel)
-    const commonPool = UPGRADES.filter((upgrade) => upgrade.category === 'common' && rank(player, upgrade.id) < upgrade.maxLevel)
+  private createUpgradeChoices(player: PlayerState, excludedIds: ReadonlySet<string> = new Set()): string[] {
+    const available = (upgrade: (typeof UPGRADES)[number]) => rank(player, upgrade.id) < upgrade.maxLevel && !excludedIds.has(upgrade.id)
+    const signaturePool = UPGRADES.filter((upgrade) => upgrade.character === player.character && available(upgrade))
+    const commonPool = UPGRADES.filter((upgrade) => upgrade.category === 'common' && available(upgrade))
     const allPool = [...signaturePool, ...commonPool]
     const choices: string[] = []
     const takeUnique = (pool: typeof UPGRADES) => {
-      if (pool.length === 0) return
-      let candidate = this.random.pick(pool).id
-      let guard = 0
-      while (choices.includes(candidate) && guard < 20) { candidate = this.random.pick(pool).id; guard += 1 }
-      if (!choices.includes(candidate)) choices.push(candidate)
+      const candidates = pool.filter((candidate) => !choices.includes(candidate.id))
+      if (candidates.length > 0) choices.push(this.random.pick(candidates).id)
     }
     takeUnique(signaturePool)
     while (choices.length < 3 && choices.length < allPool.length) takeUnique(choices.length === 1 && commonPool.length > 0 ? commonPool : allPool)
@@ -691,6 +770,16 @@ export class GameEngine {
     const addition = Math.max(1, Math.round(weaponById(player.weapon).magazine * ratio))
     player.maxAmmo += addition
     player.ammo += addition
+  }
+
+  private summonCompanion(player: PlayerState, kind: CompanionKind) {
+    if (this.snapshot.companions.some((companion) => companion.ownerId === player.id && companion.kind === kind)) return
+    this.snapshot.companions.push({
+      id: this.entityId++, ownerId: player.id, kind,
+      x: player.x - 42, y: player.y + 24, vx: 0, vy: 0, aim: player.aim,
+      phase: this.random.range(0, Math.PI * 2), attackCooldown: 0.25,
+    })
+    this.pushEvent('awaken', player.x, player.y, `${player.name.toUpperCase()} BONDED WITH ${upgradeById(kind).name.toUpperCase()}`)
   }
 
   private heal(player: PlayerState, amount: number) {

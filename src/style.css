@@ -237,6 +237,10 @@ body::before {
 .upgrade-waiting { width: min(440px, 100%); margin: 34px auto 0; padding: 34px 24px; border: 1px solid rgba(116,216,194,.3); background: rgba(5,14,11,.86); }
 .upgrade-waiting strong { display: block; margin-top: 12px; color: var(--ink); font: 500 19px 'Oswald', sans-serif; letter-spacing: .08em; }
 .upgrade-waiting small { display: block; margin-top: 8px; color: var(--muted); font-size: 8px; line-height: 1.6; }
+.upgrade-actions { display: flex; justify-content: center; margin-top: 14px; }
+.reroll-button { min-width: 260px; padding: 11px 18px; border: 1px solid rgba(242,212,121,.48); color: var(--gold); background: rgba(6,15,12,.92); font-size: 9px; letter-spacing: .11em; transition: border-color .15s, color .15s, transform .15s; }
+.reroll-button:hover:not(:disabled) { transform: translateY(-2px); border-color: var(--gold); color: #fff4c7; }
+.reroll-button:disabled { opacity: .35; cursor: default; }
 
 .recap-shell { width: min(920px, calc(100% - 40px)); min-height: 100vh; margin: 0 auto; padding: 70px 0 50px; text-align: center; }
 .recap-sigil { width: 80px; height: 80px; display: grid; place-items: center; margin: 0 auto 26px; border: 1px solid var(--gold); border-radius: 50%; color: var(--gold); font: 38px Georgia, serif; box-shadow: 0 0 80px rgba(242,212,121,.12); }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { CHARACTERS, UPGRADES } from '../src/game/data'
 import { GameEngine } from '../src/game/engine'
 import { uprightSpriteTransform } from '../src/game/renderer'
 import type { InputState, PlayerConfig } from '../src/game/types'
@@ -9,6 +10,13 @@ const player: PlayerConfig = {
 const idle: InputState = { up: false, down: false, left: false, right: false, firing: false, interact: false, aim: 0 }
 
 describe('GameEngine', () => {
+  it('keeps every rare upgrade one-of-one with five signatures per hunter', () => {
+    expect(UPGRADES.every((upgrade) => upgrade.maxLevel === 1)).toBe(true)
+    for (const character of CHARACTERS) {
+      expect(UPGRADES.filter((upgrade) => upgrade.character === character.id)).toHaveLength(5)
+    }
+  })
+
   it('repeats the same combat state from the same seed and inputs', () => {
     const first = new GameEngine([player], 240, 4242)
     const second = new GameEngine([player], 240, 4242)
@@ -58,7 +66,7 @@ describe('GameEngine', () => {
     const solo = new GameEngine([player], 240, 11)
     const ally = { ...player, id: 'ally', name: 'Ally', character: 'warden' as const }
     const duo = new GameEngine([player, ally], 240, 11)
-    expect(solo.snapshot.players[0].xpToNext).toBeGreaterThanOrEqual(75)
+    expect(solo.snapshot.players[0].xpToNext).toBeGreaterThanOrEqual(115)
     expect(duo.snapshot.players[0].xpToNext).toBeGreaterThan(solo.snapshot.players[0].xpToNext)
     expect(duo.snapshot.players[0].xpToNext).toBe(duo.snapshot.players[1].xpToNext)
   })
@@ -92,8 +100,42 @@ describe('GameEngine', () => {
     const engine = new GameEngine([{ ...player, character: 'tempest' }], 240, 101)
     engine.snapshot.players[0].xp = engine.snapshot.players[0].xpToNext
     engine.step(1 / 60, new Map([[player.id, idle]]))
-    const signatureIds = new Set(['stormchain', 'thunderhead', 'charged-mag', 'ball-lightning'])
+    const signatureIds = new Set(['stormchain', 'thunderhead', 'charged-mag', 'ball-lightning', 'storm-wisp'])
     expect(engine.snapshot.upgrade?.offers[0].ids.some((id) => signatureIds.has(id))).toBe(true)
+  })
+
+  it('gives every hunter three personal rerolls without changing the other draft', () => {
+    const ally = { ...player, id: 'ally', name: 'Ally', character: 'warden' as const }
+    const engine = new GameEngine([player, ally], 240, 202)
+    for (const squadmate of engine.snapshot.players) squadmate.xp = squadmate.xpToNext
+    engine.step(1 / 60, new Map([[player.id, idle], [ally.id, idle]]))
+    const playerOffer = engine.snapshot.upgrade!.offers.find((offer) => offer.chooserId === player.id)!
+    const allyOffer = engine.snapshot.upgrade!.offers.find((offer) => offer.chooserId === ally.id)!
+    const allyChoices = [...allyOffer.ids]
+    for (let reroll = 2; reroll >= 0; reroll -= 1) {
+      const previousChoices = [...playerOffer.ids]
+      expect(engine.rerollUpgrade(player.id)).toBe(true)
+      expect(playerOffer.ids).toHaveLength(3)
+      expect(playerOffer.ids.some((id) => previousChoices.includes(id))).toBe(false)
+      expect(playerOffer.rerollsLeft).toBe(reroll)
+      expect(allyOffer.ids).toEqual(allyChoices)
+    }
+    expect(engine.rerollUpgrade(player.id)).toBe(false)
+  })
+
+  it('turns a companion upgrade into an attacking persistent pet', () => {
+    const engine = new GameEngine([player], 240, 303)
+    engine.snapshot.phase = 'upgrade'
+    engine.snapshot.upgrade = { level: 1, expiresIn: 20, offers: [{ chooserId: player.id, ids: ['gravewing', 'quick-hands', 'fleetfoot'], rerollsLeft: 3 }] }
+    expect(engine.chooseUpgrade('gravewing', player.id)).toBe(true)
+    expect(engine.snapshot.companions).toHaveLength(1)
+    expect(engine.snapshot.companions[0]).toMatchObject({ ownerId: player.id, kind: 'gravewing' })
+    engine.snapshot.enemies.push({
+      id: 99_001, type: 'thrall', x: 180, y: 0, vx: 0, vy: 0, health: 300, maxHealth: 300,
+      radius: 13, speed: 0, damage: 0, attackCooldown: 9, burn: 0, burnTick: 0.5, slow: 0, phase: 0,
+    })
+    for (let tick = 0; tick < 30; tick += 1) engine.step(0.05, new Map([[player.id, idle]]))
+    expect(engine.snapshot.players[0].damageDealt).toBeGreaterThan(0)
   })
 
   it('fires slower, readable enemy projectiles', () => {

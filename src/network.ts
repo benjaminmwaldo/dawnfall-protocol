@@ -8,6 +8,7 @@ type NetworkMessage =
   | { type: 'start'; configs: PlayerConfig[]; duration: number; seed: number }
   | { type: 'snapshot'; snapshot: GameSnapshot }
   | { type: 'upgrade'; playerId: string; upgradeId: string }
+  | { type: 'reroll'; playerId: string }
   | { type: 'notice'; text: string }
 
 export interface NetworkCallbacks {
@@ -16,6 +17,7 @@ export interface NetworkCallbacks {
   onSnapshot(snapshot: GameSnapshot): void
   onGuestInput(playerId: string, input: InputState): void
   onUpgrade(playerId: string, upgradeId: string): void
+  onReroll(playerId: string): void
   onNotice(text: string): void
   onError(message: string): void
 }
@@ -108,6 +110,12 @@ export class MultiplayerSession {
     }
   }
 
+  sendReroll(playerId: string) {
+    if (!this.isHost && this.hostConnection?.open) {
+      this.hostConnection.send({ type: 'reroll', playerId } satisfies NetworkMessage)
+    }
+  }
+
   broadcastSnapshot(snapshot: GameSnapshot) {
     if (!this.isHost) return
     const message = { type: 'snapshot', snapshot } satisfies NetworkMessage
@@ -165,6 +173,8 @@ export class MultiplayerSession {
       this.callbacks.onGuestInput(message.playerId, message.input)
     } else if (message.type === 'upgrade' && message.playerId === connectionPlayerId) {
       this.callbacks.onUpgrade(message.playerId, message.upgradeId)
+    } else if (message.type === 'reroll' && message.playerId === connectionPlayerId) {
+      this.callbacks.onReroll(message.playerId)
     }
   }
 

@@ -16,6 +16,7 @@ const escapeHtml = (text: string) => text.replace(/[&<>'"]/g, (character) => ({ 
 const formatTime = (seconds: number) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`
 const ART_BASE = `${import.meta.env.BASE_URL}art/`
 const CHARACTER_ART_INDEX: Record<PlayerConfig['character'], number> = { vesper: 0, cinder: 1, bastion: 2, warden: 3, nyx: 4, tempest: 5, briar: 6, seraph: 7 }
+const COMPANION_ART_INDEX: Partial<Record<string, number>> = { gravewing: 0, ashkit: 1, 'aegis-hound': 2, 'mercy-moth': 3, shadecat: 4, 'storm-wisp': 5, thornling: 6, sunbird: 7 }
 const WEAPON_ART_INDEX: Record<PlayerConfig['weapon'], number> = { revolver: 0, scattergun: 1, 'arc-rifle': 2 }
 const atlasStyle = (file: string, columns: number, rows: number, index: number) => {
   const column = index % columns
@@ -24,13 +25,16 @@ const atlasStyle = (file: string, columns: number, rows: number, index: number) 
   const y = rows === 1 ? 0 : (row / (rows - 1)) * 100
   return `background-image:url('${ART_BASE}${file}');background-size:${columns * 100}% ${rows * 100}%;background-position:${x}% ${y}%;`
 }
-const portraitStyle = (character: PlayerConfig['character']) => atlasStyle('hunter-portraits.webp', 4, 2, CHARACTER_ART_INDEX[character])
+const portraitStyle = (character: PlayerConfig['character']) => atlasStyle('hunter-portraits-v2.webp', 4, 2, CHARACTER_ART_INDEX[character])
 const weaponArtStyle = (weapon: PlayerConfig['weapon']) => atlasStyle('armory-atlas.webp', 3, 2, WEAPON_ART_INDEX[weapon])
 const perkArtStyle = (perkId: string) => atlasStyle('perk-atlas.webp', 4, 3, Math.max(0, UPGRADES.slice(0, 12).findIndex((perk) => perk.id === perkId)))
 const perkIconMarkup = (perkId: string, className: string, tag: 'span' | 'i' = 'span', badge?: number) => {
   const upgrade = upgradeById(perkId)
-  const painted = UPGRADES.slice(0, 12).some((perk) => perk.id === perkId)
-  return `<${tag} class="${className}${painted ? '' : ' glyph-icon'}" style="${painted ? perkArtStyle(perkId) : `--accent:${upgrade.accent}`}" aria-hidden="true">${painted ? '' : upgrade.icon}${badge ? `<b>${badge}</b>` : ''}</${tag}>`
+  const companionIndex = COMPANION_ART_INDEX[perkId]
+  const paintedPerk = UPGRADES.slice(0, 12).some((perk) => perk.id === perkId)
+  const painted = paintedPerk || companionIndex !== undefined
+  const paintedStyle = companionIndex !== undefined ? atlasStyle('companion-sprites-v1.webp', 4, 2, companionIndex) : perkArtStyle(perkId)
+  return `<${tag} class="${className}${painted ? '' : ' glyph-icon'}" style="${painted ? paintedStyle : `--accent:${upgrade.accent}`}" aria-hidden="true">${painted ? '' : upgrade.icon}${badge ? `<b>${badge}</b>` : ''}</${tag}>`
 }
 
 document.documentElement.style.setProperty('--hero-art', `url('${ART_BASE}hero-night.webp')`)
@@ -119,6 +123,7 @@ class DawnfallApp {
       },
       onGuestInput: (playerId, input) => this.inputs.set(playerId, input),
       onUpgrade: (playerId, upgradeId) => this.engine?.chooseUpgrade(upgradeId, playerId),
+      onReroll: (playerId) => this.engine?.rerollUpgrade(playerId),
       onNotice: (text) => this.showNotice(text),
       onError: (message) => this.showNotice(message, true),
     })
@@ -165,7 +170,7 @@ class DawnfallApp {
         </section>
         <section class="principles" aria-label="Core game mechanics">
           <article><b>01</b><span>ACTIVE COMBAT</span><p>WASD to move. Mouse to aim and fire. Ammunition and reload timing matter.</p></article>
-          <article><b>02</b><span>SQUAD LEVELS</span><p>Every shard fills one shared level. All hunters draft personal upgrades together.</p></article>
+          <article><b>02</b><span>RARE POWER SPIKES</span><p>Squad levels arrive less often, but every perk can transform a hunter's build.</p></article>
           <article><b>03</b><span>BOSS RELICS</span><p>Slay four night lords to earn the only powers shared by the entire squad.</p></article>
         </section>
         <footer class="landing-footer"><span>ORIGINAL BROWSER PROTOTYPE · DESKTOP RECOMMENDED</span><span>NOT AFFILIATED WITH 20 MINUTES TILL DAWN</span></footer>
@@ -175,7 +180,7 @@ class DawnfallApp {
         <p class="eyebrow">DESIGN DNA</p>
         <h2>What came from the research</h2>
         <p><em>20 Minutes Till Dawn</em> stands apart from passive survivor-likes through directional aiming, active firing, magazines, reloads, character–weapon pairing, upgrade trees, and boss-granted power spikes.</p>
-        <p>Dawnfall keeps that active tension while giving the squad one shared XP track. Every level pauses the night for simultaneous personal drafts, so each hunter keeps her own signature tree and combat identity while advancing with the team. Rescue play and fixed structures encourage regrouping; boss relics create the rare squad-wide power spike.</p>
+        <p>Dawnfall keeps that active tension while giving the squad one shared XP track. Rarer levels pause the night for simultaneous personal drafts: three one-of-one choices and three rerolls for every active hunter. Character companions and signature powers create distinct personal builds; boss relics remain the rare squad-wide power spike.</p>
         <div class="dialog-rule"></div>
         <p class="small-copy">This prototype uses original names, code, balancing, visual language, characters, enemies, abilities, and hand-directed generated artwork.</p>
       </dialog>
@@ -530,7 +535,7 @@ class DawnfallApp {
     const localPlayer = snapshot.players.find((player) => player.id === this.localConfig.id)
     const localOffer = offer.offers.find((entry) => entry.chooserId === this.localConfig.id)
     const localChooses = Boolean(localOffer && !localOffer.selectedId)
-    const offerKey = `${offer.level}-${offer.offers.map((entry) => `${entry.chooserId}:${entry.ids.join('.')}:${entry.selectedId ?? ''}`).join('|')}`
+    const offerKey = `${offer.level}-${offer.offers.map((entry) => `${entry.chooserId}:${entry.ids.join('.')}:${entry.rerollsLeft}:${entry.selectedId ?? ''}`).join('|')}`
     if (overlay.dataset.offer === offerKey) {
       const countdown = overlay.querySelector('[data-countdown]')
       if (countdown) countdown.textContent = Math.ceil(offer.expiresIn).toString()
@@ -543,7 +548,7 @@ class DawnfallApp {
       <section class="upgrade-draft">
         <p class="eyebrow">SQUAD LEVEL ${offer.level + 1} · PARALLEL DRAFT</p>
         <h2>${localChooses ? 'SHAPE YOUR HUNTER' : localOffer?.selectedId ? 'YOUR UPGRADE IS LOCKED' : 'THE SQUAD IS CHOOSING'}</h2>
-        <p>Every active hunter gets a personal perk. Combat resumes when everyone locks a choice. Auto-lock in <b data-countdown>${Math.ceil(offer.expiresIn)}</b>s.</p>
+        <p>Every active hunter gets three transformative choices and three personal rerolls. Combat resumes when everyone locks in. Auto-lock in <b data-countdown>${Math.ceil(offer.expiresIn)}</b>s.</p>
         <div class="upgrade-status">
           ${offer.offers.map((entry) => {
             const player = snapshot.players.find((candidate) => candidate.id === entry.chooserId)
@@ -554,9 +559,9 @@ class DawnfallApp {
           ${localOffer.ids.map((id) => {
             const upgrade = upgradeById(id)
             const nextRank = (localPlayer?.perks[id] ?? 0) + 1
-            return `<button class="upgrade-card ${upgrade.category}" data-upgrade="${id}" style="--accent:${upgrade.accent}">${perkIconMarkup(id, 'upgrade-art')}<small>${upgrade.category === 'signature' ? `${characterById(upgrade.character!).name.toUpperCase()} SIGNATURE · ` : ''}RANK ${nextRank}/${upgrade.maxLevel}</small><strong>${upgrade.name}</strong><em>${upgrade.description}</em><b>LOCK CHOICE →</b></button>`
+            return `<button class="upgrade-card ${upgrade.category}" data-upgrade="${id}" style="--accent:${upgrade.accent}">${perkIconMarkup(id, 'upgrade-art')}<small>${upgrade.category === 'signature' ? `${characterById(upgrade.character!).name.toUpperCase()} SIGNATURE · ` : ''}${upgrade.maxLevel === 1 ? 'ONE-OF-ONE' : `RANK ${nextRank}/${upgrade.maxLevel}`}</small><strong>${upgrade.name}</strong><em>${upgrade.description}</em><b>LOCK CHOICE →</b></button>`
           }).join('')}
-        </div>` : `<div class="upgrade-waiting"><span class="waiting-pulse"></span><strong>${localOffer?.selectedId ? escapeHtml(upgradeById(localOffer.selectedId).name.toUpperCase()) : 'WAITING FOR ACTIVE HUNTERS'}</strong><small>${localOffer?.selectedId ? 'Your build is ready. The night resumes after the remaining choices.' : 'Spectating this squad draft.'}</small></div>`}
+        </div><div class="upgrade-actions"><button class="reroll-button" data-reroll ${localOffer.rerollsLeft > 0 ? '' : 'disabled'}>↻ REROLL ALL THREE · ${localOffer.rerollsLeft} LEFT</button></div>` : `<div class="upgrade-waiting"><span class="waiting-pulse"></span><strong>${localOffer?.selectedId ? escapeHtml(upgradeById(localOffer.selectedId).name.toUpperCase()) : 'WAITING FOR ACTIVE HUNTERS'}</strong><small>${localOffer?.selectedId ? 'Your build is ready. The night resumes after the remaining choices.' : 'Spectating this squad draft.'}</small></div>`}
       </section>`
     overlay.querySelectorAll<HTMLElement>('[data-upgrade]').forEach((button) => button.addEventListener('click', () => {
       const upgradeId = button.dataset.upgrade
@@ -564,6 +569,10 @@ class DawnfallApp {
       if (this.mode === 'guest') this.network.sendUpgrade(this.localConfig.id, upgradeId)
       else this.engine?.chooseUpgrade(upgradeId, this.localConfig.id)
     }))
+    overlay.querySelector<HTMLElement>('[data-reroll]')?.addEventListener('click', () => {
+      if (this.mode === 'guest') this.network.sendReroll(this.localConfig.id)
+      else this.engine?.rerollUpgrade(this.localConfig.id)
+    })
   }
 
   private handleGameEvents(snapshot: GameSnapshot) {

@@ -1,5 +1,5 @@
 import { isBoss } from './data'
-import type { EnemyState, GameEvent, GameSnapshot, PlayerState, StructureState } from './types'
+import type { CompanionState, EnemyState, GameEvent, GameSnapshot, PlayerState, StructureState } from './types'
 
 interface Effect {
   x: number
@@ -10,6 +10,7 @@ interface Effect {
 
 const TAU = Math.PI * 2
 const CHARACTER_SPRITE_INDEX: Record<PlayerState['character'], number> = { vesper: 0, cinder: 1, bastion: 2, warden: 3, nyx: 4, tempest: 5, briar: 6, seraph: 7 }
+const COMPANION_SPRITE_INDEX: Record<CompanionState['kind'], number> = { gravewing: 0, ashkit: 1, 'aegis-hound': 2, 'mercy-moth': 3, shadecat: 4, 'storm-wisp': 5, thornling: 6, sunbird: 7 }
 const ENEMY_SPRITE_INDEX: Record<EnemyState['type'], number> = {
   thrall: 0, skitter: 1, spitter: 2, bulwark: 3,
   wraith: 4, charger: 5, hexer: 6, leech: 7,
@@ -40,6 +41,7 @@ export class GameRenderer {
   private effects: Effect[] = []
   private readonly enemyFacing = new Map<number, number>()
   private readonly hunterSpriteAtlas = new Image()
+  private readonly companionSpriteAtlas = new Image()
   private readonly enemySpriteAtlas = new Image()
   private readonly structureAtlas = new Image()
   private readonly groundTexture = new Image()
@@ -49,7 +51,8 @@ export class GameRenderer {
     const context = canvas.getContext('2d')
     if (!context) throw new Error('Canvas rendering is not supported in this browser.')
     this.context = context
-    this.hunterSpriteAtlas.src = `${artBase}hunter-sprites.webp`
+    this.hunterSpriteAtlas.src = `${artBase}hunter-sprites-v2.webp`
+    this.companionSpriteAtlas.src = `${artBase}companion-sprites-v1.webp`
     this.enemySpriteAtlas.src = `${artBase}enemy-sprites.webp`
     this.structureAtlas.src = `${artBase}structure-atlas.webp`
     this.groundTexture.src = `${artBase}night-ground.webp`
@@ -88,6 +91,7 @@ export class GameRenderer {
     this.drawPickups(snapshot)
     this.drawProjectiles(snapshot, predictionSeconds)
     this.drawEnemies(snapshot.enemies, predictionSeconds)
+    this.drawCompanions(snapshot.companions, snapshot.players, predictionSeconds)
     this.drawPlayers(snapshot.players, localPlayerId, predictionSeconds)
     this.drawEffects(dt)
     context.restore()
@@ -365,6 +369,40 @@ export class GameRenderer {
       if (isBoss(enemy.type) || (enemy.type === 'bulwark' && enemy.maxHealth > 500)) {
         this.drawBar(x - 42, y - enemy.radius - 14, 84, 5, enemy.health / enemy.maxHealth, '#ef718e')
       }
+    }
+  }
+
+  private drawCompanions(companions: CompanionState[], players: PlayerState[], predictionSeconds: number) {
+    if (!this.companionSpriteAtlas.complete || this.companionSpriteAtlas.naturalWidth <= 0) return
+    const context = this.context
+    for (const companion of companions) {
+      const owner = players.find((player) => player.id === companion.ownerId)
+      if (!owner || owner.eliminated) continue
+      const x = companion.x + companion.vx * predictionSeconds
+      const y = companion.y + companion.vy * predictionSeconds
+      const size = companion.kind === 'mercy-moth' || companion.kind === 'sunbird' || companion.kind === 'gravewing' ? 58
+        : companion.kind === 'aegis-hound' || companion.kind === 'thornling' ? 52 : 46
+      context.save()
+      context.strokeStyle = `${owner.color}38`
+      context.lineWidth = 1
+      context.setLineDash([2, 5])
+      context.beginPath()
+      context.moveTo(owner.x, owner.y)
+      context.lineTo(x, y)
+      context.stroke()
+      context.setLineDash([])
+      context.fillStyle = 'rgba(0,0,0,.38)'
+      context.beginPath()
+      context.ellipse(x, y + size * 0.2, size * 0.22, size * 0.08, 0, 0, TAU)
+      context.fill()
+      context.shadowColor = owner.color
+      context.shadowBlur = 10
+      const transform = uprightSpriteTransform(companion.aim)
+      this.drawAtlasSprite(
+        this.companionSpriteAtlas, 4, 2, COMPANION_SPRITE_INDEX[companion.kind],
+        x, y - 3, size, size, transform.rotation, true, transform.flipX,
+      )
+      context.restore()
     }
   }
 

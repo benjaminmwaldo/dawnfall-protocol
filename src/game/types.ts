@@ -5,6 +5,7 @@ export type EnemyType =
   | 'wraith' | 'charger' | 'hexer' | 'leech'
   | 'tollkeeper' | 'broodmother' | 'graveknight' | 'eclipse-eye'
 export type BossType = 'tollkeeper' | 'broodmother' | 'graveknight' | 'eclipse-eye'
+export type CompanionKind = 'gravewing' | 'ashkit' | 'aegis-hound' | 'mercy-moth' | 'shadecat' | 'storm-wisp' | 'thornling' | 'sunbird'
 export type GamePhase = 'playing' | 'upgrade' | 'victory' | 'defeat'
 
 export interface PlayerConfig {
@@ -100,6 +101,19 @@ export interface PickupState {
   value: number
 }
 
+export interface CompanionState {
+  id: number
+  ownerId: string
+  kind: CompanionKind
+  x: number
+  y: number
+  vx: number
+  vy: number
+  aim: number
+  phase: number
+  attackCooldown: number
+}
+
 export interface StructureState {
   id: number
   type: 'moonwell' | 'ward-tower' | 'ritual-stone'
@@ -126,6 +140,7 @@ export interface UpgradeOffer {
 export interface PlayerUpgradeOffer {
   chooserId: string
   ids: string[]
+  rerollsLeft: number
   selectedId?: string
 }
 
@@ -135,6 +150,7 @@ export interface GameSnapshot {
   timeRemaining: number
   duration: number
   players: PlayerState[]
+  companions: CompanionState[]
   enemies: EnemyState[]
   projectiles: ProjectileState[]
   pickups: PickupState[]
