@@ -1,3 +1,4 @@
+import { isBoss } from './data'
 import type { EnemyState, GameEvent, GameSnapshot, PlayerState, StructureState } from './types'
 
 interface Effect {
@@ -8,13 +9,23 @@ interface Effect {
 }
 
 const TAU = Math.PI * 2
-const EAST_FACING_SPRITE_OFFSET = 0
-const CHARACTER_SPRITE_INDEX: Record<PlayerState['character'], number> = { vesper: 0, cinder: 1, bastion: 2, warden: 3 }
-const ENEMY_SPRITE_INDEX: Record<EnemyState['type'], number> = { thrall: 4, skitter: 5, spitter: 6, bulwark: 7, tollkeeper: 8 }
+const CHARACTER_SPRITE_INDEX: Record<PlayerState['character'], number> = { vesper: 0, cinder: 1, bastion: 2, warden: 3, nyx: 4, tempest: 5, briar: 6, seraph: 7 }
+const ENEMY_SPRITE_INDEX: Record<EnemyState['type'], number> = {
+  thrall: 0, skitter: 1, spitter: 2, bulwark: 3,
+  wraith: 4, charger: 5, hexer: 6, leech: 7,
+  tollkeeper: 8, broodmother: 9, graveknight: 10, 'eclipse-eye': 11,
+}
 
-// Every runtime sprite is authored facing east, which is also canvas angle zero.
-// Keeping that contract explicit prevents character art and aim vectors drifting apart.
-export const spriteRotationForDirection = (direction: number) => direction - EAST_FACING_SPRITE_OFFSET
+// Every runtime sprite is authored facing east. Angles in the left half-plane are
+// folded back into an upright range and horizontally mirrored, so nobody rotates
+// through an upside-down pose while their weapon still points at the exact aim angle.
+export const uprightSpriteTransform = (direction: number): { rotation: number; flipX: boolean } => {
+  let normalized = ((direction + Math.PI) % TAU + TAU) % TAU - Math.PI
+  if (normalized > Math.PI / 2) return { rotation: normalized - Math.PI, flipX: true }
+  if (normalized < -Math.PI / 2) return { rotation: normalized + Math.PI, flipX: true }
+  return { rotation: normalized, flipX: false }
+}
+export const spriteRotationForDirection = (direction: number) => uprightSpriteTransform(direction).rotation
 
 export class GameRenderer {
   private readonly canvas: HTMLCanvasElement
@@ -28,7 +39,8 @@ export class GameRenderer {
   private lastEventId = 0
   private effects: Effect[] = []
   private readonly enemyFacing = new Map<number, number>()
-  private readonly spriteAtlas = new Image()
+  private readonly hunterSpriteAtlas = new Image()
+  private readonly enemySpriteAtlas = new Image()
   private readonly structureAtlas = new Image()
   private readonly groundTexture = new Image()
 
@@ -37,7 +49,8 @@ export class GameRenderer {
     const context = canvas.getContext('2d')
     if (!context) throw new Error('Canvas rendering is not supported in this browser.')
     this.context = context
-    this.spriteAtlas.src = `${artBase}sprite-atlas.webp`
+    this.hunterSpriteAtlas.src = `${artBase}hunter-sprites.webp`
+    this.enemySpriteAtlas.src = `${artBase}enemy-sprites.webp`
     this.structureAtlas.src = `${artBase}structure-atlas.webp`
     this.groundTexture.src = `${artBase}night-ground.webp`
     this.resize()
@@ -53,11 +66,11 @@ export class GameRenderer {
     this.context.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
   }
 
-  render(snapshot: GameSnapshot, localPlayerId: string) {
+  render(snapshot: GameSnapshot, localPlayerId: string, focusPlayerId = localPlayerId) {
     const now = performance.now()
     const dt = Math.min(0.05, (now - this.lastFrame) / 1000)
     this.lastFrame = now
-    const focus = snapshot.players.find((player) => player.id === localPlayerId) ?? snapshot.players[0]
+    const focus = snapshot.players.find((player) => player.id === focusPlayerId) ?? snapshot.players.find((player) => player.id === localPlayerId) ?? snapshot.players[0]
     if (focus) {
       this.cameraX += (focus.x - this.cameraX) * Math.min(1, dt * 10)
       this.cameraY += (focus.y - this.cameraY) * Math.min(1, dt * 10)
@@ -250,12 +263,13 @@ export class GameRenderer {
     for (const enemy of enemies) {
       const burning = enemy.burn > 0
       const color = burning ? '#ff735c' : enemy.slow > 0 ? '#9bd6ff' : '#e8eee7'
-      if (this.spriteAtlas.complete && this.spriteAtlas.naturalWidth > 0) {
-        const size = enemy.type === 'tollkeeper' ? 172 : enemy.type === 'bulwark' ? 116 : enemy.type === 'spitter' ? 72 : 78
+      if (this.enemySpriteAtlas.complete && this.enemySpriteAtlas.naturalWidth > 0) {
+        const boss = isBoss(enemy.type)
+        const size = boss ? 174 : enemy.type === 'bulwark' ? 116 : enemy.type === 'spitter' || enemy.type === 'leech' ? 72 : enemy.type === 'charger' ? 94 : 82
         const movement = Math.hypot(enemy.vx, enemy.vy)
         const facing = movement > 0.1 ? Math.atan2(enemy.vy, enemy.vx) : (this.enemyFacing.get(enemy.id) ?? 0)
         if (movement > 0.1) this.enemyFacing.set(enemy.id, facing)
-        const rotation = spriteRotationForDirection(facing)
+        const transform = uprightSpriteTransform(facing)
         const motion = Math.min(1, movement / Math.max(1, enemy.speed))
         const stride = Math.sin(performance.now() / 88 + enemy.id * 1.73)
         const bob = motion > 0.04 ? Math.abs(stride) * 1.8 : Math.sin(performance.now() / 310 + enemy.id) * 0.35
@@ -264,30 +278,31 @@ export class GameRenderer {
         context.beginPath()
         context.ellipse(enemy.x, enemy.y + enemy.radius * 0.72, size * 0.28, size * 0.12, 0, 0, TAU)
         context.fill()
-        context.shadowColor = burning ? '#ff593d' : enemy.slow > 0 ? '#82ceff' : enemy.type === 'tollkeeper' ? '#ef375e' : 'rgba(0,0,0,0)'
-        context.shadowBlur = burning || enemy.slow > 0 ? 20 : enemy.type === 'tollkeeper' ? 16 : 0
+        context.shadowColor = burning ? '#ff593d' : enemy.slow > 0 ? '#82ceff' : boss ? '#ef375e' : 'rgba(0,0,0,0)'
+        context.shadowBlur = burning || enemy.slow > 0 ? 20 : boss ? 16 : 0
         this.drawAtlasSprite(
-          this.spriteAtlas,
-          3,
+          this.enemySpriteAtlas,
+          4,
           3,
           ENEMY_SPRITE_INDEX[enemy.type],
           enemy.x,
           enemy.y - bob,
           size * (1 - stride * 0.016 * motion),
           size * (1 + stride * 0.022 * motion),
-          rotation,
+          transform.rotation,
           true,
+          transform.flipX,
         )
         context.restore()
-        if (enemy.type === 'tollkeeper') {
+        if (boss) {
           context.strokeStyle = `rgba(239, 113, 142, ${0.28 + Math.sin(enemy.phase * 2) * 0.08})`
           context.lineWidth = 2
           context.beginPath()
           context.arc(enemy.x, enemy.y, 69 + Math.sin(enemy.phase * 2) * 4, 0, TAU)
           context.stroke()
         }
-        if ((enemy.type === 'tollkeeper' || enemy.type === 'bulwark') && enemy.maxHealth > 500) {
-          const barWidth = enemy.type === 'tollkeeper' ? 130 : 92
+        if (boss || (enemy.type === 'bulwark' && enemy.maxHealth > 500)) {
+          const barWidth = boss ? 130 : 92
           this.drawBar(enemy.x - barWidth / 2, enemy.y - size * 0.47, barWidth, 5, enemy.health / enemy.maxHealth, '#ef718e')
         }
         continue
@@ -296,8 +311,8 @@ export class GameRenderer {
       context.translate(enemy.x, enemy.y)
       context.rotate(Math.atan2(enemy.vy, enemy.vx) + Math.PI / 2)
       context.strokeStyle = color
-      context.fillStyle = enemy.type === 'tollkeeper' ? 'rgba(105, 33, 62, .82)' : 'rgba(12, 22, 19, .9)'
-      context.lineWidth = enemy.type === 'tollkeeper' ? 4 : 2
+      context.fillStyle = isBoss(enemy.type) ? 'rgba(105, 33, 62, .82)' : 'rgba(12, 22, 19, .9)'
+      context.lineWidth = isBoss(enemy.type) ? 4 : 2
       context.shadowColor = burning ? '#ff735c' : 'transparent'
       context.shadowBlur = burning ? 12 : 0
 
@@ -309,7 +324,7 @@ export class GameRenderer {
         context.closePath()
       } else if (enemy.type === 'bulwark') {
         this.polygonPath(6, enemy.radius)
-      } else if (enemy.type === 'tollkeeper') {
+      } else if (isBoss(enemy.type)) {
         this.polygonPath(8, enemy.radius)
       } else {
         context.beginPath()
@@ -332,7 +347,7 @@ export class GameRenderer {
         context.lineTo(enemy.radius * 1.1, -enemy.radius * 1.25)
         context.stroke()
       }
-      if (enemy.type === 'tollkeeper') {
+      if (isBoss(enemy.type)) {
         context.strokeStyle = '#f2d479'
         context.lineWidth = 2
         context.beginPath()
@@ -342,7 +357,7 @@ export class GameRenderer {
       }
       context.restore()
 
-      if ((enemy.type === 'tollkeeper' || enemy.type === 'bulwark') && enemy.maxHealth > 500) {
+      if (isBoss(enemy.type) || (enemy.type === 'bulwark' && enemy.maxHealth > 500)) {
         this.drawBar(enemy.x - 42, enemy.y - enemy.radius - 14, 84, 5, enemy.health / enemy.maxHealth, '#ef718e')
       }
     }
@@ -363,7 +378,7 @@ export class GameRenderer {
         context.stroke()
       }
 
-      if (this.spriteAtlas.complete && this.spriteAtlas.naturalWidth > 0) {
+      if (this.hunterSpriteAtlas.complete && this.hunterSpriteAtlas.naturalWidth > 0) {
         const local = player.id === localPlayerId
         const size = player.character === 'bastion' ? 94 : 86
         const motion = Math.min(1, Math.hypot(player.vx, player.vy) / 170)
@@ -395,18 +410,19 @@ export class GameRenderer {
         context.globalAlpha = player.downed ? 0.48 : 1
         context.shadowColor = player.color
         context.shadowBlur = local ? 12 : 6
-        const rotation = spriteRotationForDirection(player.aim)
+        const transform = uprightSpriteTransform(player.aim)
         this.drawAtlasSprite(
-          this.spriteAtlas,
-          3,
-          3,
+          this.hunterSpriteAtlas,
+          4,
+          2,
           spriteIndex,
           spriteX,
           spriteY,
           size * (1 - stride * 0.015 * motion),
           size * (1 + stride * 0.02 * motion),
-          rotation,
+          transform.rotation,
           true,
+          transform.flipX,
         )
         context.restore()
         if (player.downed) {
@@ -542,6 +558,7 @@ export class GameRenderer {
     height: number,
     rotation = 0,
     pixelated = false,
+    flipX = false,
   ) {
     const context = this.context
     const sourceWidth = image.naturalWidth / columns
@@ -552,6 +569,7 @@ export class GameRenderer {
     if (pixelated) context.imageSmoothingEnabled = false
     context.translate(x, y)
     context.rotate(rotation)
+    if (flipX) context.scale(-1, 1)
     context.drawImage(
       image,
       column * sourceWidth,

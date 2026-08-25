@@ -1,6 +1,10 @@
-export type CharacterId = 'vesper' | 'cinder' | 'bastion' | 'warden'
+export type CharacterId = 'vesper' | 'cinder' | 'bastion' | 'warden' | 'nyx' | 'tempest' | 'briar' | 'seraph'
 export type WeaponId = 'revolver' | 'scattergun' | 'arc-rifle'
-export type EnemyType = 'thrall' | 'skitter' | 'spitter' | 'bulwark' | 'tollkeeper'
+export type EnemyType =
+  | 'thrall' | 'skitter' | 'spitter' | 'bulwark'
+  | 'wraith' | 'charger' | 'hexer' | 'leech'
+  | 'tollkeeper' | 'broodmother' | 'graveknight' | 'eclipse-eye'
+export type BossType = 'tollkeeper' | 'broodmother' | 'graveknight' | 'eclipse-eye'
 export type GamePhase = 'playing' | 'upgrade' | 'victory' | 'defeat'
 
 export interface PlayerConfig {
@@ -43,6 +47,11 @@ export interface PlayerState extends PlayerConfig {
   kills: number
   damageDealt: number
   awakened: boolean
+  soulwardUsed: boolean
+  hasteRemaining: number
+  level: number
+  xp: number
+  xpToNext: number
   perks: Record<string, number>
 }
 
@@ -102,7 +111,7 @@ export interface StructureState {
 
 export interface GameEvent {
   id: number
-  type: 'shot' | 'hit' | 'hurt' | 'level' | 'boss' | 'revive' | 'awaken' | 'win' | 'lose'
+  type: 'shot' | 'hit' | 'hurt' | 'level' | 'boss' | 'buff' | 'revive' | 'awaken' | 'win' | 'lose'
   x?: number
   y?: number
   text?: string
@@ -119,14 +128,12 @@ export interface GameSnapshot {
   phase: GamePhase
   timeRemaining: number
   duration: number
-  level: number
-  xp: number
-  xpToNext: number
   players: PlayerState[]
   enemies: EnemyState[]
   projectiles: ProjectileState[]
   pickups: PickupState[]
   structures: StructureState[]
+  teamBuffs: Record<string, number>
   upgrade?: UpgradeOffer
   events: GameEvent[]
 }
@@ -138,5 +145,15 @@ export interface UpgradeDefinition {
   description: string
   maxLevel: number
   accent: string
+  character?: CharacterId
+  category: 'common' | 'signature'
 }
 
+export interface TeamBuffDefinition {
+  id: string
+  name: string
+  icon: string
+  description: string
+  accent: string
+  boss: BossType
+}

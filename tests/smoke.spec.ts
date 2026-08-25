@@ -13,7 +13,7 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
   expect(heroArt).toContain('hero-night.webp')
   await page.getByTestId('solo-button').click()
   await expect(page.getByText('CHOOSE YOUR HUNTER')).toBeVisible()
-  await expect(page.locator('.portrait-art')).toHaveCount(4)
+  await expect(page.locator('.portrait-art')).toHaveCount(8)
   await expect(page.locator('.portrait-art').first()).toHaveCSS('background-image', /hunter-portraits\.webp/)
   await expect(page.locator('.weapon-art')).toHaveCount(3)
   await page.getByTestId('launch-button').click()
@@ -30,7 +30,8 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
   expect(loadedArt).toEqual(expect.arrayContaining([
     expect.stringContaining('hero-night.webp'),
     expect.stringContaining('hunter-portraits.webp'),
-    expect.stringContaining('sprite-atlas.webp'),
+    expect.stringContaining('hunter-sprites.webp'),
+    expect.stringContaining('enemy-sprites.webp'),
     expect.stringContaining('structure-atlas.webp'),
     expect.stringContaining('night-ground.webp'),
   ]))
@@ -44,6 +45,6 @@ test('keeps the illustrated interface usable on a phone viewport', async ({ page
   await expect(page.getByRole('heading', { name: /HOLD THE LINE/ })).toBeVisible()
   await expect(page.getByTestId('entry-panel')).toBeVisible()
   await page.getByTestId('solo-button').click()
-  await expect(page.locator('.character-card')).toHaveCount(4)
+  await expect(page.locator('.character-card')).toHaveCount(8)
   await expect(page.getByTestId('launch-button')).toBeVisible()
 })

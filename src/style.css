@@ -185,6 +185,10 @@ body::before {
 .team-chip.downed { border-color: var(--red); }
 .team-chip.downed small { color: var(--red); }
 .team-chip.eliminated { opacity: .35; }
+.team-chip.watching { border-left-color: var(--gold); background: linear-gradient(90deg, rgba(242,212,121,.14), rgba(3,11,8,.42)); }
+.team-buffs-hud { position: absolute; left: 20px; bottom: 24px; display: flex; gap: 7px; }
+.team-buffs-hud span { position: relative; width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 50%; color: var(--accent); background: rgba(3,11,8,.86); box-shadow: 0 5px 18px rgba(0,0,0,.4); font: 16px Georgia, serif; }
+.team-buffs-hud b { position: absolute; right: -3px; bottom: -3px; width: 13px; height: 13px; display: grid; place-items: center; border-radius: 50%; color: #07100e; background: var(--accent); font: 7px 'DM Mono', monospace; }
 .perks-hud { position: absolute; right: 20px; top: 66px; width: 34px; display: grid; gap: 6px; }
 .perks-hud span { position: relative; width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.13); background: rgba(4,11,9,.72); color: var(--gold); font: 15px Georgia, serif; }
 .perks-hud b { position: absolute; right: -4px; bottom: -4px; width: 13px; height: 13px; display: grid; place-items: center; border-radius: 50%; color: #08100e; background: var(--gold); font: 7px 'DM Mono', monospace; }
@@ -202,6 +206,12 @@ body::before {
 .boss-hud em { display: block; height: 100%; background: var(--red); }
 .event-banner { position: absolute; left: 50%; top: 138px; color: var(--gold); font: 500 15px 'Oswald', sans-serif; letter-spacing: .12em; text-align: center; transform: translate(-50%, -8px); opacity: 0; }
 .event-banner.show { animation: banner 3.3s both; }
+.spectator-hud { position: absolute; left: 50%; bottom: 106px; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid rgba(242,212,121,.28); background: rgba(3,11,8,.92); opacity: 0; transform: translate(-50%, 12px); transition: .2s; pointer-events: none; }
+.spectator-hud.visible { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.spectator-hud button { width: 38px; height: 38px; border: 1px solid var(--line); background: rgba(242,212,121,.05); color: var(--gold); font: 25px Georgia, serif; cursor: pointer; }
+.spectator-hud div { min-width: 210px; display: grid; text-align: center; }
+.spectator-hud small, .spectator-hud span { color: var(--muted); font-size: 7px; letter-spacing: .12em; }
+.spectator-hud strong { margin: 3px 0; color: var(--ink); font: 500 15px 'Oswald', sans-serif; letter-spacing: .08em; }
 .upgrade-overlay { display: none; position: absolute; inset: 0; pointer-events: auto; }
 .upgrade-overlay.visible { display: block; }
 .upgrade-backdrop { position: absolute; inset: 0; background: rgba(2, 8, 6, .82); backdrop-filter: blur(5px); }
@@ -238,7 +248,9 @@ body::before {
 .recap-party em { grid-column: 3; text-align: right; }
 .recap-build { margin: 28px 0; padding: 20px; border: 1px solid var(--line); text-align: left; }
 .recap-build > small { display: block; margin-bottom: 14px; color: var(--muted); font-size: 8px; letter-spacing: .13em; }
-.recap-build > div { display: flex; flex-wrap: wrap; gap: 7px; }
+.recap-build section { padding: 12px 0; border-top: 1px solid var(--line); }
+.recap-build section > strong { display: block; margin-bottom: 9px; color: var(--ink); font-size: 8px; letter-spacing: .1em; text-transform: uppercase; }
+.recap-build section > div { display: flex; flex-wrap: wrap; gap: 7px; }
 .recap-build span { padding: 8px 10px; background: rgba(242,212,121,.06); color: #c9d2cc; font-size: 8px; }
 .recap-build b { color: var(--gold); }
 .recap-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -472,6 +484,7 @@ body::before {
 .team-chip > .team-portrait { width: 31px; height: 31px; border-radius: 3px; }
 .perks-hud { width: 42px; gap: 8px; }
 .perks-hud span.perk-medallion { width: 40px; height: 40px; border-radius: 50%; background-repeat: no-repeat; color: transparent; box-shadow: 0 5px 18px rgba(0,0,0,.48); }
+.perks-hud span.perk-medallion.glyph-icon { color: var(--accent); background: radial-gradient(circle, color-mix(in srgb, var(--accent) 16%, #07100e), #07100e 72%); border-color: color-mix(in srgb, var(--accent) 50%, transparent); font-size: 18px; }
 .perks-hud b { color: #07100e; text-shadow: none; }
 .ammo-hud { width: 240px; background: linear-gradient(180deg, rgba(3,11,8,.84), rgba(3,11,8,.96)); border: 1px solid rgba(242,212,121,.2); border-bottom-color: var(--gold); clip-path: polygon(7% 0, 93% 0, 100% 24%, 100% 100%, 0 100%, 0 24%); }
 .boss-hud { filter: drop-shadow(0 4px 18px #000); }
@@ -487,6 +500,8 @@ body::before {
   pointer-events: none;
 }
 .upgrade-card > span.upgrade-art { width: 96px; height: 96px; margin: 0 auto 24px; align-self: center; border: 0; border-radius: 50%; background-repeat: no-repeat; box-shadow: 0 12px 34px rgba(0,0,0,.48), 0 0 25px color-mix(in srgb, var(--accent) 12%, transparent); }
+.upgrade-card.signature { border-color: color-mix(in srgb, var(--accent) 62%, transparent); }
+.upgrade-card > span.upgrade-art.glyph-icon { color: var(--accent); background: radial-gradient(circle, color-mix(in srgb, var(--accent) 20%, #0a1612), #06100d 72%); border: 1px solid color-mix(in srgb, var(--accent) 46%, transparent); font-size: 40px; }
 .upgrade-card strong, .upgrade-card small, .upgrade-card em, .upgrade-card > b { position: relative; z-index: 1; }
 
 .recap-shell { position: relative; isolation: isolate; }
@@ -503,7 +518,8 @@ body::before {
 .recap-party > article > .recap-portrait { width: 42px; height: 42px; border-radius: 3px; }
 .recap-party article { grid-template-columns: 46px 1fr auto; background: rgba(4,13,10,.72); backdrop-filter: blur(7px); }
 .recap-build span { display: inline-flex; align-items: center; gap: 7px; }
-.recap-build span i { width: 24px; height: 24px; flex: 0 0 24px; border-radius: 50%; background-repeat: no-repeat; }
+.recap-build span i { width: 24px; height: 24px; flex: 0 0 24px; display: grid; place-items: center; border-radius: 50%; background-repeat: no-repeat; }
+.recap-build span i.glyph-icon { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, #07100e); border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent); font-style: normal; font-size: 12px; }
 
 @keyframes art-breathe { 0%, 100% { opacity: .55; transform: scale(.96); } 50% { opacity: 1; transform: scale(1.06); } }
 

@@ -1,6 +1,7 @@
-import { UPGRADES, upgradeById, weaponById } from './data'
+import { BOSS_NAMES, UPGRADES, isBoss, teamBuffByBoss, upgradeById, weaponById } from './data'
 import { SeededRandom } from './random'
 import type {
+  BossType,
   EnemyState,
   EnemyType,
   GameEvent,
@@ -13,57 +14,51 @@ import type {
   StructureState,
 } from './types'
 
-const EMPTY_INPUT: InputState = {
-  up: false,
-  down: false,
-  left: false,
-  right: false,
-  firing: false,
-  interact: false,
-  aim: 0,
-}
+const EMPTY_INPUT: InputState = { up: false, down: false, left: false, right: false, firing: false, interact: false, aim: 0 }
+const BOSS_SCHEDULE: Array<{ at: number; type: BossType }> = [
+  { at: 0.25, type: 'tollkeeper' },
+  { at: 0.49, type: 'broodmother' },
+  { at: 0.72, type: 'graveknight' },
+  { at: 0.9, type: 'eclipse-eye' },
+]
 
 const distanceSquared = (ax: number, ay: number, bx: number, by: number) => {
   const dx = ax - bx
   const dy = ay - by
   return dx * dx + dy * dy
 }
-
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
+const rank = (player: PlayerState | undefined, id: string) => player?.perks[id] ?? 0
 
 export class GameEngine {
   readonly snapshot: GameSnapshot
   private readonly random: SeededRandom
   private entityId = 1
   private eventId = 1
-  private spawnTimer = 0.4
-  private eliteSpawned = false
-  private bossSpawned = false
+  private spawnTimer = 0.25
+  private nextBossIndex = 0
   private readonly projectileHits = new Map<number, Set<number>>()
 
   constructor(configs: PlayerConfig[], duration: number, seed = Date.now()) {
     this.random = new SeededRandom(seed)
-    const players = configs.map((config, index) => this.createPlayer(config, index))
     this.snapshot = {
       seed,
       phase: 'playing',
       timeRemaining: duration,
       duration,
-      level: 1,
-      xp: 0,
-      xpToNext: 30,
-      players,
+      players: configs.map((config, index) => this.createPlayer(config, index)),
       enemies: [],
       projectiles: [],
       pickups: [],
       structures: this.createStructures(),
+      teamBuffs: {},
       events: [],
     }
   }
 
   step(dt: number, inputs: ReadonlyMap<string, InputState>): GameSnapshot {
     const delta = clamp(dt, 0, 0.05)
-    this.snapshot.events = this.snapshot.events.slice(-18)
+    this.snapshot.events = this.snapshot.events.slice(-22)
 
     if (this.snapshot.phase === 'upgrade') {
       if (this.snapshot.upgrade) {
@@ -72,13 +67,12 @@ export class GameEngine {
       }
       return this.snapshot
     }
-
     if (this.snapshot.phase !== 'playing') return this.snapshot
 
     this.snapshot.timeRemaining = Math.max(0, this.snapshot.timeRemaining - delta)
     if (this.snapshot.timeRemaining <= 0) {
       this.snapshot.phase = 'victory'
-      this.pushEvent('win', undefined, undefined, 'DAWN BROKE. THE SQUAD ENDURED.')
+      this.pushEvent('win', undefined, undefined, 'DAWN BROKE. THE HUNTERS ENDURED.')
       return this.snapshot
     }
 
@@ -93,38 +87,39 @@ export class GameEngine {
 
     if (this.snapshot.players.every((player) => player.eliminated)) {
       this.snapshot.phase = 'defeat'
-      this.pushEvent('lose', undefined, undefined, 'THE NIGHT CLAIMED THE SQUAD.')
+      this.pushEvent('lose', undefined, undefined, 'THE NIGHT CLAIMED EVERY HUNTER.')
     }
-
     return this.snapshot
   }
 
   chooseUpgrade(upgradeId: string, chooserId: string): boolean {
     const offer = this.snapshot.upgrade
-    if (!offer || this.snapshot.phase !== 'upgrade' || offer.chooserId !== chooserId || !offer.ids.includes(upgradeId)) return false
+    const player = this.snapshot.players.find((entry) => entry.id === chooserId)
+    if (!offer || !player || this.snapshot.phase !== 'upgrade' || offer.chooserId !== chooserId || !offer.ids.includes(upgradeId)) return false
+    const definition = upgradeById(upgradeId)
+    if (definition.character && definition.character !== player.character) return false
 
-    for (const player of this.snapshot.players) {
-      const current = player.perks[upgradeId] ?? 0
-      const definition = upgradeById(upgradeId)
-      player.perks[upgradeId] = Math.min(definition.maxLevel, current + 1)
-      if (upgradeId === 'vitality') {
-        player.maxHealth += 25
-        player.health = Math.min(player.maxHealth, player.health + 25)
-      }
-    }
+    const current = rank(player, upgradeId)
+    if (current >= definition.maxLevel) return false
+    player.perks[upgradeId] = current + 1
+    if (upgradeId === 'vitality') this.addMaximumHealth(player, 25)
+    if (upgradeId === 'iron-heart') this.addMaximumHealth(player, 15)
+    if (upgradeId === 'unyielding') this.addMaximumHealth(player, 30)
+    if (upgradeId === 'deep-mag') this.addMagazine(player, 0.25)
+    if (upgradeId === 'charged-mag') this.addMagazine(player, 0.2)
 
-    this.snapshot.level += 1
-    this.snapshot.xp -= this.snapshot.xpToNext
-    this.snapshot.xpToNext = Math.floor(30 * Math.pow(1.27, this.snapshot.level - 1))
+    player.xp = Math.max(0, player.xp - player.xpToNext)
+    player.level += 1
+    player.xpToNext = Math.floor(26 * Math.pow(1.24, player.level - 1))
     this.snapshot.upgrade = undefined
     this.snapshot.phase = 'playing'
-    this.pushEvent('level', undefined, undefined, `${upgradeById(upgradeId).name.toUpperCase()} JOINED THE SQUAD BUILD`)
+    this.pushEvent('level', player.x, player.y, `${player.name.toUpperCase()} CLAIMED ${definition.name.toUpperCase()}`)
     return true
   }
 
   private createPlayer(config: PlayerConfig, index: number): PlayerState {
     const weapon = weaponById(config.weapon)
-    const maxHealth = config.character === 'bastion' ? 120 : config.character === 'warden' ? 110 : 100
+    const maxHealth = config.character === 'bastion' ? 125 : config.character === 'warden' ? 110 : config.character === 'briar' ? 115 : config.character === 'seraph' ? 105 : 100
     const angle = (Math.PI * 2 * index) / Math.max(1, 4)
     return {
       ...config,
@@ -149,6 +144,11 @@ export class GameEngine {
       kills: 0,
       damageDealt: 0,
       awakened: false,
+      soulwardUsed: false,
+      hasteRemaining: 0,
+      level: 1,
+      xp: 0,
+      xpToNext: 26,
       perks: {},
     }
   }
@@ -165,8 +165,8 @@ export class GameEngine {
     for (const player of this.snapshot.players) {
       player.invulnerable = Math.max(0, player.invulnerable - dt)
       player.fireCooldown = Math.max(0, player.fireCooldown - dt)
+      player.hasteRemaining = Math.max(0, player.hasteRemaining - dt)
       if (player.eliminated) continue
-
       if (player.downed) {
         player.downTimer = Math.max(0, player.downTimer - dt)
         if (player.downTimer <= 0) {
@@ -183,7 +183,12 @@ export class GameEngine {
       const magnitude = Math.hypot(moveX, moveY) || 1
       moveX /= magnitude
       moveY /= magnitude
-      const speed = 176 * Math.pow(1.12, player.perks['fleetfoot'] ?? 0)
+      const burningNearby = player.character === 'cinder' && rank(player, 'ash-step') > 0 && this.snapshot.enemies.some((enemy) => enemy.burn > 0 && distanceSquared(player.x, player.y, enemy.x, enemy.y) < 260 * 260)
+      const moveMultiplier = Math.pow(1.12, rank(player, 'fleetfoot'))
+        * Math.pow(1.12, this.snapshot.teamBuffs['eclipse-stride'] ?? 0)
+        * (burningNearby ? 1 + rank(player, 'ash-step') * 0.1 : 1)
+        * (player.hasteRemaining > 0 ? 1.22 : 1)
+      const speed = 176 * moveMultiplier
       player.vx = moveX * speed
       player.vy = moveY * speed
       player.x = clamp(player.x + player.vx * dt, -1470, 1470)
@@ -199,85 +204,105 @@ export class GameEngine {
         this.tryFire(player)
       }
 
-      const nearAlly = this.snapshot.players.some(
-        (ally) => ally.id !== player.id && !ally.downed && !ally.eliminated && distanceSquared(player.x, player.y, ally.x, ally.y) < 150 * 150,
-      )
-      const sanctuary = player.perks['sanctuary'] ?? 0
-      const awakenedWarden = this.snapshot.players.some((ally) => ally.character === 'warden' && ally.awakened && !ally.eliminated)
-      if ((nearAlly && sanctuary > 0) || awakenedWarden) {
-        player.health = Math.min(player.maxHealth, player.health + dt * (sanctuary * 0.7 + (awakenedWarden ? 0.65 : 0)))
-      }
+      const nearAlly = this.snapshot.players.some((ally) => ally.id !== player.id && !ally.downed && !ally.eliminated && distanceSquared(player.x, player.y, ally.x, ally.y) < 150 * 150)
+      const awakenedWarden = this.snapshot.players.find((ally) => ally.character === 'warden' && ally.awakened && !ally.eliminated)
+      const regeneration = (nearAlly ? rank(player, 'sanctuary') * 0.7 : 0)
+        + (awakenedWarden ? 0.55 + rank(awakenedWarden, 'lantern-grace') * 0.42 : 0)
+        + (player.character === 'seraph' ? rank(player, 'dawn-armor') * 0.12 : 0)
+      if (regeneration > 0) player.health = Math.min(player.maxHealth, player.health + dt * regeneration)
     }
   }
 
   private tryFire(player: PlayerState) {
     const weapon = weaponById(player.weapon)
     if (player.fireCooldown > 0) return
-    if (player.ammo <= 0) {
-      player.reloadDuration = weapon.reload * Math.pow(0.82, player.perks['quick-hands'] ?? 0)
-      player.reloadRemaining = player.reloadDuration
-      return
-    }
+    if (player.ammo <= 0) { this.startReload(player); return }
 
-    const ritualBoost = this.snapshot.structures.some(
-      (structure) => structure.type === 'ritual-stone' && distanceSquared(player.x, player.y, structure.x, structure.y) < structure.radius * structure.radius,
-    )
-    const fireRate = weapon.fireRate * Math.pow(1.15, player.perks.barrage ?? 0) * (ritualBoost ? 1.25 : 1)
+    const ritualBoost = this.snapshot.structures.some((structure) => structure.type === 'ritual-stone' && distanceSquared(player.x, player.y, structure.x, structure.y) < structure.radius * structure.radius)
+    const emptyMagazineRatio = 1 - player.ammo / Math.max(1, player.maxAmmo)
+    const fireRate = weapon.fireRate
+      * Math.pow(1.15, rank(player, 'barrage'))
+      * (1 + emptyMagazineRatio * rank(player, 'relentless') * 0.1)
+      * (1 + rank(player, 'charged-mag') * 0.12)
+      * Math.pow(1.12, this.snapshot.teamBuffs['quicksilver-bell'] ?? 0)
+      * (ritualBoost ? 1.25 : 1)
     player.fireCooldown = 1 / fireRate
     player.ammo -= 1
     player.shotCount += 1
 
-    const bonusProjectiles = player.perks['double-tap'] ?? 0
+    const bonusProjectiles = rank(player, 'double-tap') + rank(player, 'twin-fangs') + rank(player, 'radiant-volley')
     const projectileCount = weapon.projectiles + bonusProjectiles
-    const totalSpread = weapon.spread + Math.max(0, projectileCount - weapon.projectiles) * 0.08
+    const totalSpread = weapon.spread + Math.max(0, projectileCount - weapon.projectiles) * 0.075
     for (let index = 0; index < projectileCount; index += 1) {
       const offset = projectileCount === 1 ? 0 : (index / (projectileCount - 1) - 0.5) * totalSpread
       const jitter = this.random.range(-weapon.spread * 0.08, weapon.spread * 0.08)
       const angle = player.aim + offset + jitter
-      const forcedCritical = player.character === 'vesper' && player.shotCount % (player.awakened ? 4 : 6) === 0
-      const criticalChance = 0.06 + (player.perks.overcharge ?? 0) * 0.09
+      const cadence = player.character === 'vesper' ? Math.max(2, 6 - rank(player, 'deadeye-rhythm') - (player.awakened ? 2 : 0)) : 0
+      const forcedCritical = cadence > 0 && player.shotCount % cadence === 0
+      const still = Math.hypot(player.vx, player.vy) < 8
+      const criticalChance = 0.06 + rank(player, 'overcharge') * 0.09
+        + (player.character === 'seraph' ? 0.08 : 0)
+        + rank(player, 'halo-crit') * 0.07
+        + (still ? rank(player, 'stillness') * 0.06 : 0)
       const critical = forcedCritical || this.random.next() < criticalChance
-      const damagePenalty = Math.pow(0.88, bonusProjectiles)
-      const damage = weapon.damage * Math.pow(1.22, player.perks['heavy-caliber'] ?? 0) * damagePenalty * (critical ? 2.2 : 1)
-      const radius = (critical ? 5.2 : 3.5) * Math.pow(1.12, player.perks['heavy-caliber'] ?? 0)
+      const damagePenalty = Math.pow(0.88, rank(player, 'double-tap')) * Math.pow(0.92, rank(player, 'twin-fangs'))
+      const baseDamage = weapon.damage
+        * Math.pow(1.22, rank(player, 'heavy-caliber'))
+        * Math.pow(1.08, rank(player, 'longshot'))
+        * Math.pow(1.12, rank(player, 'veilshot'))
+        * Math.pow(1.12, rank(player, 'sunlance'))
+        * Math.pow(1.15, this.snapshot.teamBuffs['grave-edge'] ?? 0)
+        * (still ? Math.pow(1.1, rank(player, 'stillness')) : 1)
+        * damagePenalty
+      const criticalMultiplier = 2.2
+        * Math.pow(1.35, rank(player, 'golden-bullet'))
+        * Math.pow(1.2, rank(player, 'halo-crit'))
+        * (critical && player.character === 'seraph' && player.awakened ? 1.2 : 1)
+      const projectileSpeed = weapon.speed
+        * Math.pow(1.18, rank(player, 'longshot'))
+        * Math.pow(1.14, rank(player, 'sunlance'))
+        * (player.character === 'seraph' ? 1.15 : 1)
       const projectile: ProjectileState = {
         id: this.entityId++,
         ownerId: player.id,
         x: player.x + Math.cos(angle) * 20,
         y: player.y + Math.sin(angle) * 20,
-        vx: Math.cos(angle) * weapon.speed,
-        vy: Math.sin(angle) * weapon.speed,
-        radius,
-        damage,
-        life: weapon.id === 'scattergun' ? 0.58 : 1.25,
-        pierce: weapon.pierce + (forcedCritical && player.awakened ? 1 : 0),
+        vx: Math.cos(angle) * projectileSpeed,
+        vy: Math.sin(angle) * projectileSpeed,
+        radius: (critical ? 5.2 : 3.5) * Math.pow(1.12, rank(player, 'heavy-caliber')) * Math.pow(1.12, rank(player, 'rose-thorns')),
+        damage: baseDamage * (critical ? criticalMultiplier : 1),
+        life: (weapon.id === 'scattergun' ? 0.58 : 1.25) * Math.pow(1.28, rank(player, 'ghost-rounds')),
+        pierce: weapon.pierce + rank(player, 'piercing-rounds') + rank(player, 'veilshot') + rank(player, 'rose-thorns')
+          + (rank(player, 'ghost-rounds') >= 2 ? 1 : 0)
+          + (forcedCritical && player.awakened ? 1 : 0)
+          + (critical && player.character === 'seraph' && player.awakened ? 1 : 0),
         bounces: 0,
         enemy: false,
-        chain: weapon.chain + (player.perks['static-link'] ?? 0),
-        burn: player.character === 'cinder' || (player.perks.combustion ?? 0) > 0,
+        chain: weapon.chain + rank(player, 'static-link') + rank(player, 'ricochet-oath')
+          + (player.character === 'tempest' ? 1 : 0) + rank(player, 'stormchain'),
+        burn: player.character === 'cinder' || rank(player, 'combustion') > 0,
         color: critical ? '#fff2ad' : player.color,
       }
       this.snapshot.projectiles.push(projectile)
       this.projectileHits.set(projectile.id, new Set())
     }
-
     this.pushEvent('shot', player.x, player.y)
-    if (player.ammo === 0) {
-      player.reloadDuration = weapon.reload * Math.pow(0.82, player.perks['quick-hands'] ?? 0)
-      player.reloadRemaining = player.reloadDuration
-    }
+    if (player.ammo === 0) this.startReload(player)
+  }
+
+  private startReload(player: PlayerState) {
+    const weapon = weaponById(player.weapon)
+    player.reloadDuration = weapon.reload * Math.pow(0.82, rank(player, 'quick-hands')) * Math.pow(0.88, this.snapshot.teamBuffs['quicksilver-bell'] ?? 0)
+    player.reloadRemaining = player.reloadDuration
   }
 
   private updateStructures(dt: number) {
     for (const structure of this.snapshot.structures) {
       if (structure.type === 'moonwell') {
         for (const player of this.snapshot.players) {
-          if (!player.downed && !player.eliminated && distanceSquared(player.x, player.y, structure.x, structure.y) < structure.radius * structure.radius) {
-            player.health = Math.min(player.maxHealth, player.health + dt * 2.2)
-          }
+          if (!player.downed && !player.eliminated && distanceSquared(player.x, player.y, structure.x, structure.y) < structure.radius * structure.radius) player.health = Math.min(player.maxHealth, player.health + dt * 2.2)
         }
       }
-
       if (structure.type === 'ward-tower') {
         structure.cooldown -= dt
         if (structure.cooldown <= 0) {
@@ -285,11 +310,7 @@ export class GameEngine {
           const owner = this.snapshot.players.find((player) => !player.eliminated)
           if (target && owner) {
             const angle = Math.atan2(target.y - structure.y, target.x - structure.x)
-            const projectile: ProjectileState = {
-              id: this.entityId++, ownerId: owner.id, x: structure.x, y: structure.y,
-              vx: Math.cos(angle) * 640, vy: Math.sin(angle) * 640, radius: 4, damage: 22,
-              life: 0.8, pierce: 0, bounces: 0, enemy: false, chain: 0, burn: false, color: '#74d8c2',
-            }
+            const projectile: ProjectileState = { id: this.entityId++, ownerId: owner.id, x: structure.x, y: structure.y, vx: Math.cos(angle) * 640, vy: Math.sin(angle) * 640, radius: 4, damage: 22, life: 0.8, pierce: 0, bounces: 0, enemy: false, chain: 0, burn: false, color: '#74d8c2' }
             this.snapshot.projectiles.push(projectile)
             this.projectileHits.set(projectile.id, new Set())
             structure.cooldown = 1.1
@@ -300,35 +321,27 @@ export class GameEngine {
   }
 
   private handleSpawns(dt: number) {
-    const elapsed = this.snapshot.duration - this.snapshot.timeRemaining
-    const progress = elapsed / this.snapshot.duration
-
-    if (!this.eliteSpawned && progress >= 0.34) {
-      this.eliteSpawned = true
-      this.spawnEnemy('bulwark', true)
-      this.pushEvent('boss', undefined, undefined, 'A BULWARK ENTERS THE HUNT')
-    }
-    if (!this.bossSpawned && progress >= 0.74) {
-      this.bossSpawned = true
-      this.spawnEnemy('tollkeeper', true)
-      this.pushEvent('boss', undefined, undefined, 'THE TOLLKEEPER HAS FOUND YOU')
+    const progress = 1 - this.snapshot.timeRemaining / this.snapshot.duration
+    const scheduled = BOSS_SCHEDULE[this.nextBossIndex]
+    if (scheduled && progress >= scheduled.at && !this.snapshot.enemies.some((enemy) => isBoss(enemy.type))) {
+      this.nextBossIndex += 1
+      this.spawnEnemy(scheduled.type, true)
+      this.pushEvent('boss', undefined, undefined, `${BOSS_NAMES[scheduled.type]} HAS ENTERED THE HUNT`)
     }
 
-    if (this.snapshot.enemies.some((enemy) => enemy.type === 'tollkeeper')) return
     this.spawnTimer -= dt
-    if (this.spawnTimer > 0 || this.snapshot.enemies.length >= 170) return
-
-    const playerScale = 0.7 + this.snapshot.players.length * 0.42
-    const count = Math.min(5, Math.max(1, Math.floor(playerScale + progress * 3.1)))
-    for (let index = 0; index < count; index += 1) {
-      const roll = this.random.next()
-      let type: EnemyType = 'thrall'
-      if (progress > 0.22 && roll < 0.18) type = 'skitter'
-      if (progress > 0.4 && roll > 0.78) type = 'spitter'
-      if (progress > 0.62 && roll > 0.92) type = 'bulwark'
-      this.spawnEnemy(type, false)
-    }
-    this.spawnTimer = Math.max(0.12, 0.72 - progress * 0.48) / playerScale
+    if (this.spawnTimer > 0 || this.snapshot.enemies.length >= 230) return
+    const playerScale = 0.75 + this.snapshot.players.length * 0.44
+    const bossPressure = this.snapshot.enemies.some((enemy) => isBoss(enemy.type)) ? 0.72 : 1
+    const count = Math.min(8, Math.max(2, Math.floor((playerScale + progress * 5) * bossPressure)))
+    const pool: EnemyType[] = ['thrall', 'thrall']
+    if (progress > 0.08) pool.push('skitter', 'leech')
+    if (progress > 0.2) pool.push('spitter', 'wraith')
+    if (progress > 0.34) pool.push('charger')
+    if (progress > 0.48) pool.push('hexer')
+    if (progress > 0.62) pool.push('bulwark')
+    for (let index = 0; index < count; index += 1) this.spawnEnemy(this.random.pick(pool), false)
+    this.spawnTimer = Math.max(0.1, 0.62 - progress * 0.45) / playerScale
   }
 
   private spawnEnemy(type: EnemyType, staged: boolean) {
@@ -336,20 +349,31 @@ export class GameEngine {
     const centerX = living.reduce((sum, player) => sum + player.x, 0) / Math.max(1, living.length)
     const centerY = living.reduce((sum, player) => sum + player.y, 0) / Math.max(1, living.length)
     const angle = this.random.range(0, Math.PI * 2)
-    const range = staged ? 520 : this.random.range(550, 760)
+    const range = staged ? 520 : this.random.range(540, 770)
     const progress = 1 - this.snapshot.timeRemaining / this.snapshot.duration
-    const scale = 1 + progress * 1.7 + Math.max(0, this.snapshot.players.length - 1) * 0.38
-    const stats = {
-      thrall: { hp: 34, radius: 13, speed: 56, damage: 12 },
-      skitter: { hp: 22, radius: 9, speed: 104, damage: 9 },
+    const regularScale = 1 + progress * 1.6 + Math.max(0, this.snapshot.players.length - 1) * 0.34
+    const bossScale = (0.72 + this.snapshot.players.length * 0.3) * (1 + progress * 0.38)
+    const stats: Record<EnemyType, { hp: number; radius: number; speed: number; damage: number }> = {
+      thrall: { hp: 34, radius: 13, speed: 58, damage: 12 },
+      skitter: { hp: 22, radius: 9, speed: 106, damage: 9 },
       spitter: { hp: 58, radius: 15, speed: 48, damage: 10 },
-      bulwark: { hp: staged ? 1450 : 210, radius: staged ? 32 : 23, speed: 34, damage: 20 },
-      tollkeeper: { hp: 5400 * (0.7 + this.snapshot.players.length * 0.3), radius: 58, speed: 28, damage: 25 },
-    }[type]
+      bulwark: { hp: 225, radius: 23, speed: 35, damage: 20 },
+      wraith: { hp: 48, radius: 15, speed: 76, damage: 11 },
+      charger: { hp: 88, radius: 17, speed: 70, damage: 18 },
+      hexer: { hp: 72, radius: 16, speed: 43, damage: 11 },
+      leech: { hp: 30, radius: 11, speed: 92, damage: 8 },
+      tollkeeper: { hp: 4400, radius: 58, speed: 30, damage: 24 },
+      broodmother: { hp: 5000, radius: 62, speed: 34, damage: 22 },
+      graveknight: { hp: 5900, radius: 60, speed: 42, damage: 28 },
+      'eclipse-eye': { hp: 6800, radius: 64, speed: 36, damage: 26 },
+    }
+    const base = stats[type]
+    const scale = isBoss(type) ? bossScale : regularScale
     this.snapshot.enemies.push({
-      id: this.entityId++, type, x: centerX + Math.cos(angle) * range, y: centerY + Math.sin(angle) * range,
-      vx: 0, vy: 0, health: stats.hp * scale, maxHealth: stats.hp * scale, radius: stats.radius,
-      speed: stats.speed, damage: stats.damage, attackCooldown: this.random.range(0, 0.4),
+      id: this.entityId++, type,
+      x: centerX + Math.cos(angle) * range, y: centerY + Math.sin(angle) * range,
+      vx: 0, vy: 0, health: base.hp * scale, maxHealth: base.hp * scale, radius: base.radius,
+      speed: base.speed, damage: base.damage, attackCooldown: this.random.range(0, 0.45),
       burn: 0, burnTick: 0.5, slow: 0, phase: this.random.range(0, Math.PI * 2),
     })
   }
@@ -360,14 +384,13 @@ export class GameEngine {
       enemy.attackCooldown = Math.max(0, enemy.attackCooldown - dt)
       enemy.slow = Math.max(0, enemy.slow - dt)
       enemy.phase += dt
-
       if (enemy.burn > 0) {
         enemy.burn -= dt
         enemy.burnTick -= dt
         if (enemy.burnTick <= 0) {
           const owner = this.snapshot.players.find((player) => player.id === enemy.burnOwner)
-          const burnRank = owner?.perks.combustion ?? 0
-          this.damageEnemy(enemy, 5 + burnRank * 4, enemy.burnOwner)
+          const burnDamage = (5 + rank(owner, 'combustion') * 4) * Math.pow(1.45, rank(owner, 'white-flame'))
+          this.damageEnemy(enemy, burnDamage, enemy.burnOwner)
           enemy.burnTick = 0.5
         }
       }
@@ -375,40 +398,47 @@ export class GameEngine {
 
       const target = this.nearestLivingPlayer(enemy.x, enemy.y)
       if (!target) continue
-      const angle = Math.atan2(target.y - enemy.y, target.x - enemy.x)
+      let angle = Math.atan2(target.y - enemy.y, target.x - enemy.x)
       const distance = Math.sqrt(distanceSquared(enemy.x, enemy.y, target.x, target.y))
       let speed = enemy.speed * (enemy.slow > 0 ? 0.48 : 1)
+      if (enemy.type === 'wraith') angle += Math.sin(enemy.phase * 3) * 0.32
+      if (enemy.type === 'charger' && enemy.phase % 4.2 < 0.9) speed *= 2.25
+      if (enemy.type === 'leech') speed *= 1.12
 
-      if (enemy.type === 'spitter' && distance < 330) {
-        speed = distance < 220 ? -enemy.speed * 0.55 : 0
+      if ((enemy.type === 'spitter' || enemy.type === 'hexer') && distance < (enemy.type === 'hexer' ? 410 : 335)) {
+        speed = distance < 220 ? -enemy.speed * 0.5 : 0
         if (enemy.attackCooldown <= 0) {
-          this.spawnEnemyProjectile(enemy, angle, 260, 7)
-          enemy.attackCooldown = 2.15
+          this.spawnEnemyProjectile(enemy, angle, enemy.type === 'hexer' ? 165 : 185, enemy.type === 'hexer' ? 9 : 7)
+          enemy.attackCooldown = enemy.type === 'hexer' ? 2.45 : 2.05
         }
       }
-      if (enemy.type === 'tollkeeper' && enemy.phase % 3.4 < dt) {
-        for (let index = 0; index < 12; index += 1) this.spawnEnemyProjectile(enemy, (index / 12) * Math.PI * 2 + enemy.phase, 215, 9)
+      if (enemy.type === 'tollkeeper' && enemy.phase % 3.5 < dt) {
+        for (let shot = 0; shot < 12; shot += 1) this.spawnEnemyProjectile(enemy, shot / 12 * Math.PI * 2 + enemy.phase, 155, 9)
+      }
+      if (enemy.type === 'broodmother' && enemy.phase % 3.1 < dt) {
+        for (let shot = 0; shot < 9; shot += 1) this.spawnEnemyProjectile(enemy, shot / 9 * Math.PI * 2 - enemy.phase * 0.35, 142, 8)
+      }
+      if (enemy.type === 'graveknight' && enemy.phase % 2.8 < dt) {
+        for (let shot = -2; shot <= 2; shot += 1) this.spawnEnemyProjectile(enemy, angle + shot * 0.16, 178, 11)
+      }
+      if (enemy.type === 'eclipse-eye' && enemy.phase % 2.6 < dt) {
+        for (let shot = 0; shot < 16; shot += 1) this.spawnEnemyProjectile(enemy, shot / 16 * Math.PI * 2 + enemy.phase * 0.55, 135, 10)
       }
 
       enemy.vx = Math.cos(angle) * speed
       enemy.vy = Math.sin(angle) * speed
       enemy.x += enemy.vx * dt
       enemy.y += enemy.vy * dt
-
       if (distance < enemy.radius + 13 && enemy.attackCooldown <= 0) {
         this.damagePlayer(target, enemy.damage)
-        enemy.attackCooldown = enemy.type === 'tollkeeper' ? 0.65 : 1.0
+        enemy.attackCooldown = isBoss(enemy.type) ? 0.72 : 1
       }
     }
     this.snapshot.enemies = this.snapshot.enemies.filter((enemy) => enemy.health > 0)
   }
 
   private spawnEnemyProjectile(enemy: EnemyState, angle: number, speed: number, damage: number) {
-    this.snapshot.projectiles.push({
-      id: this.entityId++, ownerId: `enemy-${enemy.id}`, x: enemy.x, y: enemy.y,
-      vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, radius: 5, damage,
-      life: 3, pierce: 0, bounces: 0, enemy: true, chain: 0, burn: false, color: '#ef718e',
-    })
+    this.snapshot.projectiles.push({ id: this.entityId++, ownerId: `enemy-${enemy.id}`, x: enemy.x, y: enemy.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, radius: 5, damage, life: 4, pierce: 0, bounces: 0, enemy: true, chain: 0, burn: false, color: '#ef718e' })
   }
 
   private updateProjectiles(dt: number) {
@@ -417,7 +447,6 @@ export class GameEngine {
       projectile.x += projectile.vx * dt
       projectile.y += projectile.vy * dt
       if (projectile.life <= 0) continue
-
       if (projectile.enemy) {
         for (const player of this.snapshot.players) {
           if (player.downed || player.eliminated) continue
@@ -436,12 +465,9 @@ export class GameEngine {
         if (distanceSquared(projectile.x, projectile.y, enemy.x, enemy.y) > Math.pow(projectile.radius + enemy.radius, 2)) continue
         hits.add(enemy.id)
         this.damageEnemy(enemy, projectile.damage, projectile.ownerId)
-        if (projectile.burn && enemy.health > 0) {
-          enemy.burn = 2.5
-          enemy.burnOwner = projectile.ownerId
-        }
+        if (projectile.burn && enemy.health > 0) { enemy.burn = 2.5; enemy.burnOwner = projectile.ownerId }
         const owner = this.snapshot.players.find((player) => player.id === projectile.ownerId)
-        const frostRank = owner?.perks.frostbite ?? 0
+        const frostRank = rank(owner, 'frostbite')
         if (frostRank > 0) enemy.slow = 0.8 + frostRank * 0.35
         if (projectile.chain > 0) this.arcDamage(enemy, projectile, hits)
         projectile.pierce -= 1
@@ -450,89 +476,126 @@ export class GameEngine {
       }
       this.projectileHits.set(projectile.id, hits)
     }
-
-    for (const projectile of this.snapshot.projectiles) {
-      if (projectile.life <= 0) this.projectileHits.delete(projectile.id)
-    }
-    this.snapshot.projectiles = this.snapshot.projectiles.filter((projectile) => projectile.life > 0).slice(-420)
+    for (const projectile of this.snapshot.projectiles) if (projectile.life <= 0) this.projectileHits.delete(projectile.id)
+    this.snapshot.projectiles = this.snapshot.projectiles.filter((projectile) => projectile.life > 0).slice(-560)
+    this.snapshot.enemies = this.snapshot.enemies.filter((enemy) => enemy.health > 0)
   }
 
   private arcDamage(origin: EnemyState, projectile: ProjectileState, alreadyHit: Set<number>) {
+    const owner = this.snapshot.players.find((player) => player.id === projectile.ownerId)
+    const range = owner?.character === 'tempest' && owner.awakened ? 190 : 150
+    const retention = 0.52 + rank(owner, 'thunderhead') * 0.1 + (owner?.character === 'tempest' && owner.awakened ? 0.1 : 0)
     const candidates = this.snapshot.enemies
-      .filter((enemy) => enemy.health > 0 && !alreadyHit.has(enemy.id) && distanceSquared(origin.x, origin.y, enemy.x, enemy.y) < 145 * 145)
+      .filter((enemy) => enemy.health > 0 && !alreadyHit.has(enemy.id) && distanceSquared(origin.x, origin.y, enemy.x, enemy.y) < range * range)
       .sort((a, b) => distanceSquared(origin.x, origin.y, a.x, a.y) - distanceSquared(origin.x, origin.y, b.x, b.y))
       .slice(0, projectile.chain)
     for (const target of candidates) {
       alreadyHit.add(target.id)
-      this.damageEnemy(target, projectile.damage * 0.52, projectile.ownerId)
+      this.damageEnemy(target, projectile.damage * retention, projectile.ownerId)
+      if (rank(owner, 'ball-lightning') > 0) target.slow = Math.max(target.slow, 1 + rank(owner, 'ball-lightning') * 0.5)
       this.pushEvent('hit', target.x, target.y)
     }
   }
 
   private damageEnemy(enemy: EnemyState, amount: number, ownerId?: string) {
     if (enemy.health <= 0) return
-    enemy.health -= amount
     const owner = this.snapshot.players.find((player) => player.id === ownerId)
-    if (owner) owner.damageDealt += amount
+    let finalAmount = amount
+    if (owner && enemy.health / enemy.maxHealth < 0.38) finalAmount *= Math.pow(1.18, rank(owner, 'hollow-points'))
+    if (owner && isBoss(enemy.type)) finalAmount *= Math.pow(1.2, rank(owner, 'executioner'))
+    enemy.health -= finalAmount
+    if (owner) owner.damageDealt += finalAmount
     this.pushEvent('hit', enemy.x, enemy.y)
     if (enemy.health > 0) return
 
-    if (owner) owner.kills += 1
-    const value = enemy.type === 'tollkeeper' ? 120 : enemy.type === 'bulwark' && enemy.maxHealth > 500 ? 38 : enemy.type === 'bulwark' ? 9 : 4
-    const pickup: PickupState = { id: this.entityId++, x: enemy.x, y: enemy.y, value }
+    if (owner) {
+      owner.kills += 1
+      if (owner.character === 'briar') this.heal(owner, owner.maxHealth * (0.006 + rank(owner, 'bloodbloom') * 0.006) * (owner.awakened ? 2 : 1))
+      if (owner.character === 'nyx' && rank(owner, 'night-harvest') > 0 && owner.kills % 10 === 0) { this.heal(owner, 5 + rank(owner, 'night-harvest') * 4); owner.hasteRemaining = 4 }
+      if (owner.character === 'cinder' && rank(owner, 'phoenix-round') > 0 && owner.kills % 20 === 0) this.heal(owner, 8 + rank(owner, 'phoenix-round') * 5)
+    }
+    const values: Record<EnemyType, number> = { thrall: 4, skitter: 3, spitter: 6, bulwark: 10, wraith: 6, charger: 8, hexer: 8, leech: 4, tollkeeper: 75, broodmother: 85, graveknight: 95, 'eclipse-eye': 110 }
+    const pickup: PickupState = { id: this.entityId++, x: enemy.x, y: enemy.y, value: values[enemy.type] }
     this.snapshot.pickups.push(pickup)
 
-    if (enemy.type === 'tollkeeper') this.awakenSquad()
+    if (isBoss(enemy.type)) this.rewardBoss(enemy.type)
     const burnOwner = this.snapshot.players.find((player) => player.id === enemy.burnOwner)
     if (burnOwner?.character === 'cinder' && burnOwner.awakened) {
-      for (const nearby of this.snapshot.enemies) {
-        if (nearby.id !== enemy.id && nearby.health > 0 && distanceSquared(enemy.x, enemy.y, nearby.x, nearby.y) < 90 * 90) {
-          this.damageEnemy(nearby, 32, burnOwner.id)
-        }
+      const explosionRank = rank(burnOwner, 'flashpoint')
+      const explosionRange = 90 + explosionRank * 28
+      const explosionDamage = 32 * Math.pow(1.4, explosionRank)
+      for (const nearby of [...this.snapshot.enemies]) {
+        if (nearby.id !== enemy.id && nearby.health > 0 && distanceSquared(enemy.x, enemy.y, nearby.x, nearby.y) < explosionRange * explosionRange) this.damageEnemy(nearby, explosionDamage, burnOwner.id)
       }
     }
   }
 
   private damagePlayer(player: PlayerState, amount: number) {
     if (player.invulnerable > 0 || player.downed || player.eliminated) return
+    const evadeChance = rank(player, 'afterimage') * 0.05
+      + (player.character === 'nyx' ? (player.awakened ? 0.28 : 0.16) + rank(player, 'shadow-step') * 0.07 : 0)
+    if (this.random.next() < evadeChance) {
+      player.invulnerable = 0.42
+      if (player.character === 'nyx' && player.awakened) player.hasteRemaining = 1.8
+      this.pushEvent('hit', player.x, player.y)
+      return
+    }
     const bastion = this.snapshot.players.find((ally) => {
       if (ally.character !== 'bastion' || ally.downed || ally.eliminated) return false
-      const range = ally.awakened ? 300 : 150
+      const range = (ally.awakened ? 300 : 150) + rank(ally, 'aegis-lattice') * 35
       return distanceSquared(player.x, player.y, ally.x, ally.y) < range * range
     })
-    const finalDamage = amount * (bastion ? (bastion.awakened ? 0.68 : 0.82) : 1)
+    const auraReduction = bastion ? (bastion.awakened ? 0.32 : 0.18) + rank(bastion, 'aegis-lattice') * 0.04 : 0
+    const personalReduction = rank(player, 'steadfast') * 0.08 + rank(player, 'dawn-armor') * 0.07
+      + (player.reloadRemaining > 0 ? rank(player, 'shielded-mag') * 0.09 : 0)
+    const finalDamage = amount * Math.max(0.3, 1 - auraReduction - personalReduction)
     player.health -= finalDamage
-    player.invulnerable = 0.58
+    player.invulnerable = 0.58 + rank(player, 'kinetic-shell') * 0.12
     this.pushEvent('hurt', player.x, player.y)
+
+    if (player.character === 'bastion' && rank(player, 'retaliation') > 0) {
+      const targets = this.snapshot.enemies.filter((enemy) => enemy.health > 0 && distanceSquared(player.x, player.y, enemy.x, enemy.y) < 125 * 125).slice(0, 8)
+      for (const target of targets) this.damageEnemy(target, 9 + rank(player, 'retaliation') * 7, player.id)
+    }
+    if (player.character === 'briar' && rank(player, 'thorn-crown') > 0) {
+      const target = this.nearestEnemy(player.x, player.y, 105)
+      if (target) this.damageEnemy(target, finalDamage * rank(player, 'thorn-crown') * 0.38, player.id)
+    }
     if (player.health > 0) return
+    if (player.character === 'warden' && rank(player, 'soulward') > 0 && !player.soulwardUsed) {
+      player.soulwardUsed = true
+      player.health = 1
+      player.invulnerable = 3
+      this.pushEvent('revive', player.x, player.y, 'SOULWARD REFUSED THE FINAL BLOW')
+      return
+    }
     player.health = 0
     player.downed = true
-    player.downTimer = 15
+    player.downTimer = 15 + rank(player, 'unyielding') * 5
     player.reviveProgress = 0
   }
 
   private updatePickups(dt: number) {
     for (const pickup of this.snapshot.pickups) {
-      let collected = false
       for (const player of this.snapshot.players) {
         if (player.downed || player.eliminated) continue
-        const magnet = 62 * Math.pow(1.45, player.perks['soul-magnet'] ?? 0)
+        const magnet = 62 * Math.pow(1.45, rank(player, 'soul-magnet')) * Math.pow(1.2, this.snapshot.teamBuffs['eclipse-stride'] ?? 0)
         const distance = Math.sqrt(distanceSquared(pickup.x, pickup.y, player.x, player.y))
         if (distance < magnet * 2.4 && distance > 1) {
           const speed = 110 + (magnet * 2.4 - distance) * 2.2
-          pickup.x += ((player.x - pickup.x) / distance) * speed * dt
-          pickup.y += ((player.y - pickup.y) / distance) * speed * dt
+          pickup.x += (player.x - pickup.x) / distance * speed * dt
+          pickup.y += (player.y - pickup.y) / distance * speed * dt
         }
         if (distance < 22) {
-          this.snapshot.xp += pickup.value
+          const multiplier = 1 + rank(player, 'scavenger') * 0.15 + rank(player, 'red-harvest') * 0.2
+          player.xp += Math.max(1, Math.round(pickup.value * multiplier))
+          if (rank(player, 'red-harvest') > 0) this.heal(player, rank(player, 'red-harvest') * 0.35)
           pickup.value = 0
-          collected = true
           break
         }
       }
-      if (collected) pickup.value = 0
     }
-    this.snapshot.pickups = this.snapshot.pickups.filter((pickup) => pickup.value > 0).slice(-260)
+    this.snapshot.pickups = this.snapshot.pickups.filter((pickup) => pickup.value > 0).slice(-320)
   }
 
   private handleRevives(dt: number, inputs: ReadonlyMap<string, InputState>) {
@@ -541,54 +604,79 @@ export class GameEngine {
         const input = inputs.get(player.id) ?? EMPTY_INPUT
         return !player.downed && !player.eliminated && input.interact && distanceSquared(player.x, player.y, downed.x, downed.y) < 68 * 68
       })
-      if (!reviver) {
-        downed.reviveProgress = Math.max(0, downed.reviveProgress - dt * 0.35)
-        continue
-      }
-      const speed = reviver.character === 'warden' ? 1.5 : 1
-      downed.reviveProgress += dt * speed
+      if (!reviver) { downed.reviveProgress = Math.max(0, downed.reviveProgress - dt * 0.35); continue }
+      const reviveSpeed = (reviver.character === 'warden' ? 1.5 : 1) * (1 + rank(reviver, 'merciful-hand') * 0.35)
+      downed.reviveProgress += dt * reviveSpeed
       if (downed.reviveProgress >= 2.2) {
         downed.downed = false
-        downed.health = downed.maxHealth * 0.5
-        downed.downTimer = 15
+        const lastRite = rank(reviver, 'last-rite')
+        downed.health = downed.maxHealth * (0.5 + lastRite * 0.15)
+        downed.downTimer = 15 + rank(downed, 'unyielding') * 5
         downed.reviveProgress = 0
-        downed.invulnerable = 2
+        downed.invulnerable = 2 + lastRite
+        downed.hasteRemaining = lastRite > 0 ? 4 : 0
         this.pushEvent('revive', downed.x, downed.y, `${reviver.name.toUpperCase()} PULLED ${downed.name.toUpperCase()} BACK`)
       }
     }
   }
 
   private checkLevelUp() {
-    if (this.snapshot.phase !== 'playing' || this.snapshot.xp < this.snapshot.xpToNext) return
-    const eligible = UPGRADES.filter((upgrade) => (this.snapshot.players[0]?.perks[upgrade.id] ?? 0) < upgrade.maxLevel)
-    const pool = eligible.length >= 3 ? eligible : UPGRADES
+    if (this.snapshot.phase !== 'playing') return
+    const chooser = this.snapshot.players.find((player) => !player.eliminated && player.xp >= player.xpToNext)
+    if (!chooser) return
+    const signaturePool = UPGRADES.filter((upgrade) => upgrade.character === chooser.character && rank(chooser, upgrade.id) < upgrade.maxLevel)
+    const commonPool = UPGRADES.filter((upgrade) => upgrade.category === 'common' && rank(chooser, upgrade.id) < upgrade.maxLevel)
+    const allPool = [...signaturePool, ...commonPool]
     const choices: string[] = []
-    while (choices.length < 3 && choices.length < pool.length) {
-      const id = this.random.pick(pool).id
-      if (!choices.includes(id)) choices.push(id)
+    const takeUnique = (pool: typeof UPGRADES) => {
+      if (pool.length === 0) return
+      let candidate = this.random.pick(pool).id
+      let guard = 0
+      while (choices.includes(candidate) && guard < 20) { candidate = this.random.pick(pool).id; guard += 1 }
+      if (!choices.includes(candidate)) choices.push(candidate)
     }
-    const activePlayers = this.snapshot.players.filter((player) => !player.eliminated)
-    const chooser = activePlayers[(this.snapshot.level - 1) % Math.max(1, activePlayers.length)] ?? this.snapshot.players[0]
-    this.snapshot.upgrade = { ids: choices, chooserId: chooser.id, expiresIn: 12 }
+    takeUnique(signaturePool)
+    while (choices.length < 3 && choices.length < allPool.length) takeUnique(choices.length === 1 && commonPool.length > 0 ? commonPool : allPool)
+    if (choices.length === 0) return
+    this.snapshot.upgrade = { ids: choices, chooserId: chooser.id, expiresIn: 15 }
     this.snapshot.phase = 'upgrade'
-    this.pushEvent('level', undefined, undefined, `${chooser.name.toUpperCase()} CHOOSES THE NEXT SQUAD PERK`)
+    this.pushEvent('level', chooser.x, chooser.y, `${chooser.name.toUpperCase()} IS SHAPING HER OWN BUILD`)
+  }
+
+  private rewardBoss(type: BossType) {
+    const buff = teamBuffByBoss(type)
+    this.snapshot.teamBuffs[buff.id] = (this.snapshot.teamBuffs[buff.id] ?? 0) + 1
+    if (type === 'broodmother') for (const player of this.snapshot.players) this.addMaximumHealth(player, 25)
+    if (this.snapshot.players.some((player) => !player.awakened)) this.awakenSquad()
+    this.pushEvent('buff', undefined, undefined, `SQUAD RELIC · ${buff.name.toUpperCase()} — ${buff.description.toUpperCase()}`)
   }
 
   private awakenSquad() {
     for (const player of this.snapshot.players) player.awakened = true
-    this.pushEvent('awaken', undefined, undefined, 'THE TOME AWAKENS EVERY HUNTER')
+    this.pushEvent('awaken', undefined, undefined, 'BOSS BLOOD AWAKENED EVERY HUNTER')
+  }
+
+  private addMaximumHealth(player: PlayerState, amount: number) {
+    player.maxHealth += amount
+    player.health = Math.min(player.maxHealth, player.health + amount)
+  }
+
+  private addMagazine(player: PlayerState, ratio: number) {
+    const addition = Math.max(1, Math.round(weaponById(player.weapon).magazine * ratio))
+    player.maxAmmo += addition
+    player.ammo += addition
+  }
+
+  private heal(player: PlayerState, amount: number) {
+    player.health = Math.min(player.maxHealth, player.health + amount)
   }
 
   private nearestLivingPlayer(x: number, y: number): PlayerState | undefined {
-    return this.snapshot.players
-      .filter((player) => !player.downed && !player.eliminated)
-      .sort((a, b) => distanceSquared(x, y, a.x, a.y) - distanceSquared(x, y, b.x, b.y))[0]
+    return this.snapshot.players.filter((player) => !player.downed && !player.eliminated).sort((a, b) => distanceSquared(x, y, a.x, a.y) - distanceSquared(x, y, b.x, b.y))[0]
   }
 
   private nearestEnemy(x: number, y: number, range: number): EnemyState | undefined {
-    return this.snapshot.enemies
-      .filter((enemy) => enemy.health > 0 && distanceSquared(x, y, enemy.x, enemy.y) <= range * range)
-      .sort((a, b) => distanceSquared(x, y, a.x, a.y) - distanceSquared(x, y, b.x, b.y))[0]
+    return this.snapshot.enemies.filter((enemy) => enemy.health > 0 && distanceSquared(x, y, enemy.x, enemy.y) <= range * range).sort((a, b) => distanceSquared(x, y, a.x, a.y) - distanceSquared(x, y, b.x, b.y))[0]
   }
 
   private pushEvent(type: GameEvent['type'], x?: number, y?: number, text?: string) {

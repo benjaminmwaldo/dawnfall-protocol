@@ -1,5 +1,5 @@
 import './style.css'
-import { CHARACTERS, PLAYER_COLORS, UPGRADES, WEAPONS, characterById, upgradeById, weaponById } from './game/data'
+import { BOSS_NAMES, CHARACTERS, PLAYER_COLORS, UPGRADES, WEAPONS, characterById, isBoss, teamBuffById, upgradeById, weaponById } from './game/data'
 import { GameEngine } from './game/engine'
 import { GameRenderer } from './game/renderer'
 import type { GameSnapshot, InputState, PlayerConfig } from './game/types'
@@ -15,7 +15,7 @@ const makePlayerId = () => crypto.randomUUID().slice(0, 8)
 const escapeHtml = (text: string) => text.replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character] ?? character)
 const formatTime = (seconds: number) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`
 const ART_BASE = `${import.meta.env.BASE_URL}art/`
-const CHARACTER_ART_INDEX: Record<PlayerConfig['character'], number> = { vesper: 0, cinder: 1, bastion: 2, warden: 3 }
+const CHARACTER_ART_INDEX: Record<PlayerConfig['character'], number> = { vesper: 0, cinder: 1, bastion: 2, warden: 3, nyx: 4, tempest: 5, briar: 6, seraph: 7 }
 const WEAPON_ART_INDEX: Record<PlayerConfig['weapon'], number> = { revolver: 0, scattergun: 1, 'arc-rifle': 2 }
 const atlasStyle = (file: string, columns: number, rows: number, index: number) => {
   const column = index % columns
@@ -24,9 +24,14 @@ const atlasStyle = (file: string, columns: number, rows: number, index: number) 
   const y = rows === 1 ? 0 : (row / (rows - 1)) * 100
   return `background-image:url('${ART_BASE}${file}');background-size:${columns * 100}% ${rows * 100}%;background-position:${x}% ${y}%;`
 }
-const portraitStyle = (character: PlayerConfig['character']) => atlasStyle('hunter-portraits.webp', 2, 2, CHARACTER_ART_INDEX[character])
+const portraitStyle = (character: PlayerConfig['character']) => atlasStyle('hunter-portraits.webp', 4, 2, CHARACTER_ART_INDEX[character])
 const weaponArtStyle = (weapon: PlayerConfig['weapon']) => atlasStyle('armory-atlas.webp', 3, 2, WEAPON_ART_INDEX[weapon])
-const perkArtStyle = (perkId: string) => atlasStyle('perk-atlas.webp', 4, 3, Math.max(0, UPGRADES.findIndex((perk) => perk.id === perkId)))
+const perkArtStyle = (perkId: string) => atlasStyle('perk-atlas.webp', 4, 3, Math.max(0, UPGRADES.slice(0, 12).findIndex((perk) => perk.id === perkId)))
+const perkIconMarkup = (perkId: string, className: string, tag: 'span' | 'i' = 'span', badge?: number) => {
+  const upgrade = upgradeById(perkId)
+  const painted = UPGRADES.slice(0, 12).some((perk) => perk.id === perkId)
+  return `<${tag} class="${className}${painted ? '' : ' glyph-icon'}" style="${painted ? perkArtStyle(perkId) : `--accent:${upgrade.accent}`}" aria-hidden="true">${painted ? '' : upgrade.icon}${badge ? `<b>${badge}</b>` : ''}</${tag}>`
+}
 
 document.documentElement.style.setProperty('--hero-art', `url('${ART_BASE}hero-night.webp')`)
 document.documentElement.style.setProperty('--ground-art', `url('${ART_BASE}night-ground.webp')`)
@@ -55,7 +60,7 @@ class AudioPulse {
     const gain = this.context.createGain()
     const settings: Record<string, [number, number, number]> = {
       shot: [125, 70, 0.025], hurt: [95, 45, 0.12], level: [410, 720, 0.18],
-      boss: [65, 38, 0.34], revive: [300, 560, 0.2], awaken: [220, 880, 0.34], win: [360, 920, 0.5], lose: [150, 60, 0.55],
+      boss: [65, 38, 0.34], buff: [260, 760, 0.34], revive: [300, 560, 0.2], awaken: [220, 880, 0.34], win: [360, 920, 0.5], lose: [150, 60, 0.55],
     }
     const [start, end, duration] = settings[type] ?? [170, 130, 0.04]
     oscillator.type = type === 'boss' || type === 'lose' ? 'sawtooth' : 'triangle'
@@ -85,6 +90,7 @@ class DawnfallApp {
   private lastInputSend = 0
   private lastHandledEvent = 0
   private finishQueued = false
+  private spectatingId?: string
   private readonly inputs = new Map<string, InputState>()
   private readonly localInput: InputState = { up: false, down: false, left: false, right: false, firing: false, interact: false, aim: 0 }
   private readonly audio = new AudioPulse()
@@ -131,7 +137,7 @@ class DawnfallApp {
           <div class="hero-copy">
             <p class="eyebrow">1–4 PLAYER CO-OP SURVIVAL ROGUELITE</p>
             <h1>HOLD THE LINE<br><em>UNTIL DAWN.</em></h1>
-            <p class="hero-lede">Aim every shot. Build one squad. Survive one impossible night.</p>
+            <p class="hero-lede">Aim every shot. Shape your hunter. Survive one impossible night together.</p>
             <div class="run-readout" aria-label="Twenty minute run timeline">
               <span>20:00</span><div><i></i><i></i><i></i></div><strong>00:00</strong>
             </div>
@@ -154,8 +160,8 @@ class DawnfallApp {
         </section>
         <section class="principles" aria-label="Core game mechanics">
           <article><b>01</b><span>ACTIVE COMBAT</span><p>WASD to move. Mouse to aim and fire. Ammunition and reload timing matter.</p></article>
-          <article><b>02</b><span>SHARED BUILDS</span><p>Level together. Take turns choosing the next perk for the entire squad.</p></article>
-          <article><b>03</b><span>LAST CHANCES</span><p>Revive fallen hunters, defend ancient structures, and steal power from the boss.</p></article>
+          <article><b>02</b><span>PERSONAL BUILDS</span><p>Collect your own shards and draft common or hunter-exclusive upgrades.</p></article>
+          <article><b>03</b><span>BOSS RELICS</span><p>Slay four night lords to earn the only powers shared by the entire squad.</p></article>
         </section>
         <footer class="landing-footer"><span>ORIGINAL BROWSER PROTOTYPE · DESKTOP RECOMMENDED</span><span>NOT AFFILIATED WITH 20 MINUTES TILL DAWN</span></footer>
       </main>
@@ -164,7 +170,7 @@ class DawnfallApp {
         <p class="eyebrow">DESIGN DNA</p>
         <h2>What came from the research</h2>
         <p><em>20 Minutes Till Dawn</em> stands apart from passive survivor-likes through directional aiming, active firing, magazines, reloads, character–weapon pairing, upgrade trees, and boss-granted power spikes.</p>
-        <p>Dawnfall keeps that active tension, then changes the decision unit from one build to a squad build: rotating perk choices, rescue play, protective auras, and fixed structures that encourage regrouping.</p>
+        <p>Dawnfall keeps that active tension while giving every hunter her own XP, upgrade draft, signature tree, and combat identity. Rescue play and fixed structures encourage regrouping; boss relics create the rare squad-wide power spike.</p>
         <div class="dialog-rule"></div>
         <p class="small-copy">This prototype uses original names, code, balancing, visual language, characters, enemies, abilities, and hand-directed generated artwork.</p>
       </dialog>
@@ -323,6 +329,7 @@ class DawnfallApp {
     this.stopGameLoop()
     this.screen = 'game'
     this.finishQueued = false
+    this.spectatingId = undefined
     this.lastHandledEvent = 0
     app.innerHTML = `
       <main class="game-shell" data-testid="game-shell">
@@ -332,11 +339,17 @@ class DawnfallApp {
           <div class="timer-block"><small>UNTIL DAWN</small><strong id="timer-readout">${formatTime(this.snapshot?.timeRemaining ?? this.duration)}</strong><div class="xp-track"><i id="xp-fill"></i></div></div>
           <button class="mute-button" id="mute-button" aria-label="Toggle sound">SOUND ON</button>
           <div class="team-hud" id="team-hud"></div>
+          <div class="team-buffs-hud" id="team-buffs-hud"></div>
           <div class="perks-hud" id="perks-hud"></div>
           <div class="ammo-hud" id="ammo-hud"></div>
           <div class="boss-hud" id="boss-hud"></div>
           <div class="controls-hud"><span><kbd>WASD</kbd> MOVE</span><span><kbd>MOUSE</kbd> AIM + FIRE</span><span><kbd>E</kbd> REVIVE</span></div>
           <div class="event-banner" id="event-banner"></div>
+          <div class="spectator-hud" id="spectator-hud">
+            <button id="spectate-prev" aria-label="Watch previous ally">‹</button>
+            <div><small>YOU FELL · WATCHING</small><strong id="spectator-name">ALLY</strong><span>Q / E TO CYCLE</span></div>
+            <button id="spectate-next" aria-label="Watch next ally">›</button>
+          </div>
           <div class="upgrade-overlay" id="upgrade-overlay"></div>
         </section>
       </main>
@@ -356,11 +369,14 @@ class DawnfallApp {
     const setKey = (event: KeyboardEvent, pressed: boolean) => {
       const tag = (event.target as HTMLElement | null)?.tagName
       if (tag === 'INPUT' || tag === 'BUTTON') return
+      const localEliminated = this.snapshot?.players.find((player) => player.id === this.localConfig.id)?.eliminated
+      if (pressed && localEliminated && ['KeyQ', 'BracketLeft'].includes(event.code)) { event.preventDefault(); this.cycleSpectator(-1); return }
+      if (pressed && localEliminated && ['KeyE', 'BracketRight'].includes(event.code)) { event.preventDefault(); this.cycleSpectator(1); return }
       if (['KeyW', 'ArrowUp'].includes(event.code)) this.localInput.up = pressed
       if (['KeyS', 'ArrowDown'].includes(event.code)) this.localInput.down = pressed
       if (['KeyA', 'ArrowLeft'].includes(event.code)) this.localInput.left = pressed
       if (['KeyD', 'ArrowRight'].includes(event.code)) this.localInput.right = pressed
-      if (event.code === 'KeyE') this.localInput.interact = pressed
+      if (event.code === 'KeyE' && !localEliminated) this.localInput.interact = pressed
     }
     window.onkeydown = (event) => setKey(event, true)
     window.onkeyup = (event) => setKey(event, false)
@@ -373,6 +389,8 @@ class DawnfallApp {
       const muted = this.audio.toggle()
       ;(event.currentTarget as HTMLButtonElement).textContent = muted ? 'SOUND OFF' : 'SOUND ON'
     })
+    document.querySelector('#spectate-prev')?.addEventListener('click', () => this.cycleSpectator(-1))
+    document.querySelector('#spectate-next')?.addEventListener('click', () => this.cycleSpectator(1))
   }
 
   private gameLoop(time: number) {
@@ -393,7 +411,8 @@ class DawnfallApp {
     }
 
     if (this.snapshot) {
-      this.renderer?.render(this.snapshot, this.localConfig.id)
+      const focusPlayerId = this.resolveFocusPlayerId(this.snapshot)
+      this.renderer?.render(this.snapshot, this.localConfig.id, focusPlayerId)
       if (time - this.lastHud > 80) {
         this.updateHud(this.snapshot)
         this.lastHud = time
@@ -407,40 +426,72 @@ class DawnfallApp {
     this.animationFrame = requestAnimationFrame((nextTime) => this.gameLoop(nextTime))
   }
 
+  private resolveFocusPlayerId(snapshot: GameSnapshot): string {
+    const local = snapshot.players.find((player) => player.id === this.localConfig.id)
+    if (!local?.eliminated) { this.spectatingId = undefined; return local?.id ?? snapshot.players[0]?.id ?? this.localConfig.id }
+    const watchable = snapshot.players.filter((player) => !player.eliminated && !player.downed)
+    const fallback = watchable.length > 0 ? watchable : snapshot.players.filter((player) => !player.eliminated)
+    if (!fallback.some((player) => player.id === this.spectatingId)) this.spectatingId = fallback[0]?.id
+    return this.spectatingId ?? local.id
+  }
+
+  private cycleSpectator(direction: number) {
+    if (!this.snapshot) return
+    const local = this.snapshot.players.find((player) => player.id === this.localConfig.id)
+    if (!local?.eliminated) return
+    const standing = this.snapshot.players.filter((player) => !player.eliminated && !player.downed)
+    const watchable = standing.length > 0 ? standing : this.snapshot.players.filter((player) => !player.eliminated)
+    if (watchable.length === 0) return
+    const current = watchable.findIndex((player) => player.id === this.spectatingId)
+    this.spectatingId = watchable[(current + direction + watchable.length) % watchable.length].id
+    this.updateHud(this.snapshot)
+  }
+
   private updateHud(snapshot: GameSnapshot) {
     const localPlayer = snapshot.players.find((player) => player.id === this.localConfig.id) ?? snapshot.players[0]
+    const focusId = this.resolveFocusPlayerId(snapshot)
+    const hudPlayer = localPlayer?.eliminated ? snapshot.players.find((player) => player.id === focusId) ?? localPlayer : localPlayer
     const timer = document.querySelector('#timer-readout')
     const level = document.querySelector('#level-readout')
     const xpFill = document.querySelector<HTMLElement>('#xp-fill')
     if (timer) timer.textContent = formatTime(snapshot.timeRemaining)
-    if (level) level.textContent = `LV. ${snapshot.level.toString().padStart(2, '0')}`
-    if (xpFill) xpFill.style.width = `${Math.min(100, (snapshot.xp / snapshot.xpToNext) * 100)}%`
+    if (level) level.textContent = `${localPlayer?.eliminated ? 'WATCHING · ' : ''}LV. ${(hudPlayer?.level ?? 1).toString().padStart(2, '0')}`
+    if (xpFill) xpFill.style.width = `${Math.min(100, ((hudPlayer?.xp ?? 0) / Math.max(1, hudPlayer?.xpToNext ?? 1)) * 100)}%`
 
     const team = document.querySelector('#team-hud')
     if (team) team.innerHTML = snapshot.players.map((player) => `
-      <article class="team-chip ${player.downed ? 'downed' : ''} ${player.eliminated ? 'eliminated' : ''}">
+      <article class="team-chip ${player.downed ? 'downed' : ''} ${player.eliminated ? 'eliminated' : ''} ${player.id === focusId && localPlayer?.eliminated ? 'watching' : ''}">
         <span class="team-portrait" style="--player:${player.color};${portraitStyle(player.character)}"></span>
-        <div><b>${escapeHtml(player.name)}</b><i><em style="width:${(player.health / player.maxHealth) * 100}%"></em></i></div>
-        <small>${player.eliminated ? 'LOST' : player.downed ? `${Math.ceil(player.downTimer)}s` : `${Math.ceil(player.health)}`}</small>
+        <div><b>${escapeHtml(player.name)} · L${player.level}</b><i><em style="width:${(player.health / player.maxHealth) * 100}%"></em></i></div>
+        <small>${player.eliminated ? 'LOST' : player.downed ? `${Math.ceil(player.downTimer)}s` : player.id === focusId && localPlayer?.eliminated ? 'VIEW' : `${Math.ceil(player.health)}`}</small>
       </article>`).join('')
 
     const perks = document.querySelector('#perks-hud')
-    const activePerks = Object.entries(localPlayer?.perks ?? {}).filter(([, rank]) => rank > 0)
-    if (perks) perks.innerHTML = activePerks.map(([id, rank]) => `<span class="perk-medallion" title="${upgradeById(id).name}" style="${perkArtStyle(id)}"><b>${rank}</b></span>`).join('')
+    const activePerks = Object.entries(hudPlayer?.perks ?? {}).filter(([, perkRank]) => perkRank > 0).slice(-10)
+    if (perks) perks.innerHTML = activePerks.map(([id, perkRank]) => perkIconMarkup(id, 'perk-medallion', 'span', perkRank)).join('')
 
     const ammo = document.querySelector('#ammo-hud')
-    if (ammo && localPlayer) {
-      const reloading = localPlayer.reloadRemaining > 0
-      const reloadProgress = reloading ? 1 - localPlayer.reloadRemaining / localPlayer.reloadDuration : 1
-      ammo.innerHTML = `<small>${weaponById(localPlayer.weapon).name.toUpperCase()}</small><strong>${reloading ? 'RELOAD' : `${localPlayer.ammo} / ${localPlayer.maxAmmo}`}</strong><i><em style="width:${reloadProgress * 100}%"></em></i>`
+    if (ammo && hudPlayer) {
+      const reloading = hudPlayer.reloadRemaining > 0
+      const reloadProgress = reloading ? 1 - hudPlayer.reloadRemaining / hudPlayer.reloadDuration : 1
+      ammo.innerHTML = `<small>${localPlayer?.eliminated ? `${escapeHtml(hudPlayer.name.toUpperCase())} · ` : ''}${weaponById(hudPlayer.weapon).name.toUpperCase()}</small><strong>${reloading ? 'RELOAD' : `${hudPlayer.ammo} / ${hudPlayer.maxAmmo}`}</strong><i><em style="width:${reloadProgress * 100}%"></em></i>`
     }
 
-    const boss = snapshot.enemies.find((enemy) => enemy.type === 'tollkeeper')
+    const boss = snapshot.enemies.find((enemy) => isBoss(enemy.type))
     const bossHud = document.querySelector<HTMLElement>('#boss-hud')
     if (bossHud) {
       bossHud.classList.toggle('visible', Boolean(boss))
-      bossHud.innerHTML = boss ? `<span>THE TOLLKEEPER</span><i><em style="width:${(boss.health / boss.maxHealth) * 100}%"></em></i>` : ''
+      bossHud.innerHTML = boss && isBoss(boss.type) ? `<span>${BOSS_NAMES[boss.type]}</span><i><em style="width:${(boss.health / boss.maxHealth) * 100}%"></em></i>` : ''
     }
+    const teamBuffs = document.querySelector<HTMLElement>('#team-buffs-hud')
+    if (teamBuffs) teamBuffs.innerHTML = Object.entries(snapshot.teamBuffs).filter(([, buffRank]) => buffRank > 0).map(([id, buffRank]) => {
+      const buff = teamBuffById(id)
+      return `<span title="${buff.name}: ${buff.description}" style="--accent:${buff.accent}">${buff.icon}<b>${buffRank}</b></span>`
+    }).join('')
+    const spectator = document.querySelector<HTMLElement>('#spectator-hud')
+    if (spectator) spectator.classList.toggle('visible', Boolean(localPlayer?.eliminated && snapshot.phase !== 'defeat'))
+    const spectatorName = document.querySelector<HTMLElement>('#spectator-name')
+    if (spectatorName && localPlayer?.eliminated && hudPlayer) spectatorName.textContent = `${hudPlayer.name.toUpperCase()} · ${characterById(hudPlayer.character).name.toUpperCase()}`
     this.renderUpgrade(snapshot)
   }
 
@@ -462,14 +513,14 @@ class DawnfallApp {
     overlay.innerHTML = `
       <div class="upgrade-backdrop"></div>
       <section class="upgrade-draft">
-        <p class="eyebrow">SQUAD LEVEL ${snapshot.level + 1}</p>
-        <h2>${localChooses ? 'CHOOSE OUR NEXT EDGE' : `${escapeHtml(chooser?.name ?? 'A hunter')} IS CHOOSING`}</h2>
-        <p>${localChooses ? 'Your choice applies to every hunter.' : 'The night is paused for the whole squad.'} Auto-pick in <b data-countdown>${Math.ceil(offer.expiresIn)}</b>s.</p>
+        <p class="eyebrow">${escapeHtml(chooser?.name.toUpperCase() ?? 'HUNTER')} · PERSONAL LEVEL ${(chooser?.level ?? 1) + 1}</p>
+        <h2>${localChooses ? 'SHAPE YOUR HUNTER' : `${escapeHtml(chooser?.name ?? 'A hunter')} IS CHOOSING`}</h2>
+        <p>${localChooses ? 'This upgrade belongs only to your build.' : 'The night is paused while her build branches.'} Auto-pick in <b data-countdown>${Math.ceil(offer.expiresIn)}</b>s.</p>
         <div class="upgrade-cards">
           ${offer.ids.map((id) => {
             const upgrade = upgradeById(id)
-            const rank = (snapshot.players[0]?.perks[id] ?? 0) + 1
-            return `<button class="upgrade-card" data-upgrade="${id}" style="--accent:${upgrade.accent}" ${localChooses ? '' : 'disabled'}><span class="upgrade-art" style="${perkArtStyle(id)}"></span><small>RANK ${rank}/${upgrade.maxLevel}</small><strong>${upgrade.name}</strong><em>${upgrade.description}</em><b>TAKE PERK →</b></button>`
+            const nextRank = (chooser?.perks[id] ?? 0) + 1
+            return `<button class="upgrade-card ${upgrade.category}" data-upgrade="${id}" style="--accent:${upgrade.accent}" ${localChooses ? '' : 'disabled'}>${perkIconMarkup(id, 'upgrade-art')}<small>${upgrade.category === 'signature' ? `${characterById(upgrade.character!).name.toUpperCase()} SIGNATURE · ` : ''}RANK ${nextRank}/${upgrade.maxLevel}</small><strong>${upgrade.name}</strong><em>${upgrade.description}</em><b>TAKE PERK →</b></button>`
           }).join('')}
         </div>
       </section>`
@@ -505,7 +556,7 @@ class DawnfallApp {
     const won = this.snapshot.phase === 'victory'
     const totalKills = this.snapshot.players.reduce((sum, player) => sum + player.kills, 0)
     const totalDamage = this.snapshot.players.reduce((sum, player) => sum + player.damageDealt, 0)
-    const activePerks = Object.entries(this.snapshot.players[0]?.perks ?? {})
+    const highestLevel = Math.max(...this.snapshot.players.map((player) => player.level), 1)
     app.innerHTML = `
       <main class="recap-shell ${won ? 'victory' : 'defeat'}">
         <div class="recap-sigil">${won ? '☼' : '◈'}</div>
@@ -514,14 +565,17 @@ class DawnfallApp {
         <p>${won ? 'The squad held long enough for the first light to break.' : 'Every hunter fell before the horizon changed.'}</p>
         <section class="recap-stats">
           <article><small>TIME HELD</small><strong>${formatTime(this.snapshot.duration - this.snapshot.timeRemaining)}</strong></article>
-          <article><small>SQUAD LEVEL</small><strong>${this.snapshot.level}</strong></article>
+          <article><small>HIGHEST LEVEL</small><strong>${highestLevel}</strong></article>
           <article><small>ENEMIES FELLED</small><strong>${totalKills}</strong></article>
           <article><small>DAMAGE DEALT</small><strong>${Math.round(totalDamage).toLocaleString()}</strong></article>
         </section>
         <section class="recap-party">
-          ${this.snapshot.players.map((player) => `<article><span class="recap-portrait" style="--player:${player.color};${portraitStyle(player.character)}"></span><div><strong>${escapeHtml(player.name)}</strong><small>${characterById(player.character).name} · ${weaponById(player.weapon).name}</small></div><b>${player.kills} KILLS</b><em>${Math.round(player.damageDealt).toLocaleString()} DMG</em></article>`).join('')}
+          ${this.snapshot.players.map((player) => `<article><span class="recap-portrait" style="--player:${player.color};${portraitStyle(player.character)}"></span><div><strong>${escapeHtml(player.name)} · LEVEL ${player.level}</strong><small>${characterById(player.character).name} · ${weaponById(player.weapon).name}</small></div><b>${player.kills} KILLS</b><em>${Math.round(player.damageDealt).toLocaleString()} DMG</em></article>`).join('')}
         </section>
-        <div class="recap-build"><small>FINAL SQUAD BUILD</small><div>${activePerks.length ? activePerks.map(([id, rank]) => `<span><i style="${perkArtStyle(id)}"></i>${upgradeById(id).name} <b>×${rank}</b></span>`).join('') : '<em>No perks secured.</em>'}</div></div>
+        <div class="recap-build"><small>FINAL HUNTER BUILDS</small>${this.snapshot.players.map((player) => {
+          const activePerks = Object.entries(player.perks).filter(([, perkRank]) => perkRank > 0)
+          return `<section><strong>${escapeHtml(player.name)} · ${characterById(player.character).name}</strong><div>${activePerks.length ? activePerks.map(([id, perkRank]) => `<span>${perkIconMarkup(id, 'recap-perk-icon', 'i')}${upgradeById(id).name} <b>×${perkRank}</b></span>`).join('') : '<em>No perks secured.</em>'}</div></section>`
+        }).join('')}<section><strong>SQUAD RELICS</strong><div>${Object.entries(this.snapshot.teamBuffs).filter(([, buffRank]) => buffRank > 0).map(([id, buffRank]) => { const buff = teamBuffById(id); return `<span><i class="recap-perk-icon glyph-icon" style="--accent:${buff.accent}">${buff.icon}</i>${buff.name} <b>×${buffRank}</b></span>` }).join('') || '<em>No boss relics claimed.</em>'}</div></section></div>
         <div class="recap-actions"><button class="primary-button" id="again-button">RUN IT AGAIN</button><button class="secondary-button" id="home-button">RETURN TO CAMP</button></div>
         <p class="prototype-note">BALANCE NOTE · This is a combat-and-networking prototype. Numbers, spawn density, and WebRTC reliability need broader playtest data.</p>
       </main>`
