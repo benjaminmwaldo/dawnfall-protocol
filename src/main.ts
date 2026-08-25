@@ -40,7 +40,17 @@ const atlasStyle = (file: string, columns: number, rows: number, index: number) 
   const y = rows === 1 ? 0 : (row / (rows - 1)) * 100
   return `background-image:url('${ART_BASE}${file}');background-size:${columns * 100}% ${rows * 100}%;background-position:${x}% ${y}%;`
 }
-const portraitStyle = (character: PlayerConfig['character']) => atlasStyle('hunter-portraits-v2.webp', 4, 2, CHARACTER_ART_INDEX[character])
+const portraitStyle = (character: PlayerConfig['character']) => atlasStyle('hunter-portraits-v3.webp', 4, 2, CHARACTER_ART_INDEX[character])
+const stableArtVariant = (key: string): number => {
+  let hash = 2166136261
+  for (let index = 0; index < key.length; index += 1) {
+    hash ^= key.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (Math.abs(hash) % 5) + 1
+}
+const upgradeSceneStyle = (character: PlayerConfig['character'], variant: number) => `background-image:url('${ART_BASE}upgrade-${character}-${variant}.webp');`
+const recapSceneStyle = (won: boolean, variant: number) => `background-image:url('${ART_BASE}recap-${won ? 'victory' : 'defeat'}-${variant}.webp');`
 const weaponArtStyle = (weapon: PlayerConfig['weapon']) => {
   const art = WEAPON_ART[weapon]
   return atlasStyle(art.file, art.columns, art.rows, art.index)
@@ -584,6 +594,9 @@ class DawnfallApp {
     const localOffer = offer.offers.find((entry) => entry.chooserId === this.localConfig.id)
     const localChooses = Boolean(localOffer && !localOffer.selectedId)
     const draftLocked = offer.acceptsInputIn > 0
+    const sceneCharacter = localPlayer?.character ?? snapshot.players[0]?.character ?? 'vesper'
+    const sceneVariant = stableArtVariant(`${snapshot.seed}:${offer.level}:${this.localConfig.id}`)
+    const sceneHunter = characterById(sceneCharacter)
     const offerKey = `${offer.level}-${draftLocked ? 'locked' : 'ready'}-${offer.offers.map((entry) => `${entry.chooserId}:${entry.ids.join('.')}:${entry.rerollsLeft}:${entry.selectedId ?? ''}`).join('|')}`
     if (overlay.dataset.offer === offerKey) {
       const countdown = overlay.querySelector('[data-countdown]')
@@ -595,6 +608,7 @@ class DawnfallApp {
     overlay.dataset.offer = offerKey
     overlay.classList.add('visible')
     overlay.innerHTML = `
+      <div class="upgrade-scene" data-art-variant="${sceneVariant}" role="img" aria-label="${sceneHunter.name} in a playful alternate setting" style="${upgradeSceneStyle(sceneCharacter, sceneVariant)}"><span>${sceneHunter.name.toUpperCase()} · A LIFE BEYOND THE NIGHT</span></div>
       <div class="upgrade-backdrop"></div>
       <section class="upgrade-draft">
         <p class="eyebrow">SQUAD LEVEL ${offer.level + 1} · PARALLEL DRAFT</p>
@@ -657,12 +671,18 @@ class DawnfallApp {
     const totalKills = this.snapshot.players.reduce((sum, player) => sum + player.kills, 0)
     const totalDamage = this.snapshot.players.reduce((sum, player) => sum + player.damageDealt, 0)
     const highestLevel = Math.max(...this.snapshot.players.map((player) => player.level), 1)
+    const recapVariant = stableArtVariant(`${this.snapshot.seed}:${this.snapshot.phase}:recap`)
     app.innerHTML = `
-      <main class="recap-shell ${won ? 'victory' : 'defeat'}">
-        <div class="recap-sigil">${won ? '☼' : '◈'}</div>
-        <p class="eyebrow">HUNT COMPLETE</p>
-        <h1>${won ? 'DAWN FOUND YOU.' : 'THE NIGHT WON.'}</h1>
-        <p>${won ? 'The squad held long enough for the first light to break.' : 'Every hunter fell before the horizon changed.'}</p>
+      <main class="recap-shell ${won ? 'victory' : 'defeat'}" data-art-variant="${recapVariant}">
+        <section class="recap-hero">
+          <div class="recap-scene" role="img" aria-label="${won ? 'The squad welcoming the dawn' : 'The squad overcome by the night'}" style="${recapSceneStyle(won, recapVariant)}"><span>CHRONICLE ${recapVariant} / 5</span></div>
+          <div class="recap-heading">
+            <div class="recap-sigil">${won ? '☼' : '◈'}</div>
+            <p class="eyebrow">HUNT COMPLETE</p>
+            <h1>${won ? 'DAWN FOUND YOU.' : 'THE NIGHT WON.'}</h1>
+            <p>${won ? 'The squad held long enough for the first light to break.' : 'Every hunter fell before the horizon changed.'}</p>
+          </div>
+        </section>
         <section class="recap-stats">
           <article><small>TIME HELD</small><strong>${formatTime(this.snapshot.duration - this.snapshot.timeRemaining)}</strong></article>
           <article><small>HIGHEST LEVEL</small><strong>${highestLevel}</strong></article>

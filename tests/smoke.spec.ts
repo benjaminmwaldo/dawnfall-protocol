@@ -14,7 +14,7 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
   await page.getByTestId('solo-button').click()
   await expect(page.getByText('CHOOSE YOUR HUNTER')).toBeVisible()
   await expect(page.locator('.portrait-art')).toHaveCount(8)
-  await expect(page.locator('.portrait-art').first()).toHaveCSS('background-image', /hunter-portraits-v2\.webp/)
+  await expect(page.locator('.portrait-art').first()).toHaveCSS('background-image', /hunter-portraits-v3\.webp/)
   await expect(page.locator('.weapon-art')).toHaveCount(10)
   await expect(page.locator('[data-weapon="seeker"]')).toContainText('Nightjar')
   const initialCharacter = await page.locator('[data-character].selected').getAttribute('data-character')
@@ -39,10 +39,11 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
     .filter((name) => name.includes('/art/')))
   expect(loadedArt).toEqual(expect.arrayContaining([
     expect.stringContaining('hero-night.webp'),
-    expect.stringContaining('hunter-portraits-v2.webp'),
+    expect.stringContaining('hunter-portraits-v3.webp'),
     expect.stringContaining('armory-atlas-v2.webp'),
     expect.stringContaining('sword-dawncleaver.webp'),
-    expect.stringContaining('hunter-sprites-v2.webp'),
+    expect.stringContaining('hunter-sprites-v3.webp'),
+    expect.stringContaining('weapon-sprites-v1.webp'),
     expect.stringContaining('companion-sprites-v1.webp'),
     expect.stringContaining('enemy-sprites.webp'),
     expect.stringContaining('structure-atlas.webp'),
@@ -50,6 +51,10 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
   ]))
   expect(failedRequests).toEqual([])
   expect(pageErrors).toEqual([])
+
+  for (const art of ['upgrade-vesper-1.webp', 'upgrade-seraph-5.webp', 'recap-victory-1.webp', 'recap-defeat-5.webp']) {
+    expect((await page.request.get(`/art/${art}`)).ok()).toBe(true)
+  }
 })
 
 test('keeps the illustrated interface usable on a phone viewport', async ({ page }) => {

@@ -10,6 +10,10 @@ interface Effect {
 
 const TAU = Math.PI * 2
 const CHARACTER_SPRITE_INDEX: Record<PlayerState['character'], number> = { vesper: 0, cinder: 1, bastion: 2, warden: 3, nyx: 4, tempest: 5, briar: 6, seraph: 7 }
+const WEAPON_SPRITE_INDEX: Record<PlayerState['weapon'], number> = {
+  revolver: 0, scattergun: 1, 'arc-rifle': 2, 'burst-carbine': 3, railgun: 4,
+  'grenade-launcher': 5, flamethrower: 6, 'frost-cannon': 7, seeker: 8, sword: 9,
+}
 const COMPANION_SPRITE_INDEX: Record<CompanionState['kind'], number> = { gravewing: 0, ashkit: 1, 'aegis-hound': 2, 'mercy-moth': 3, shadecat: 4, 'storm-wisp': 5, thornling: 6, sunbird: 7 }
 const ENEMY_SPRITE_INDEX: Record<EnemyState['type'], number> = {
   thrall: 0, skitter: 1, spitter: 2, bulwark: 3,
@@ -41,6 +45,7 @@ export class GameRenderer {
   private effects: Effect[] = []
   private readonly enemyFacing = new Map<number, number>()
   private readonly hunterSpriteAtlas = new Image()
+  private readonly weaponSpriteAtlas = new Image()
   private readonly companionSpriteAtlas = new Image()
   private readonly enemySpriteAtlas = new Image()
   private readonly structureAtlas = new Image()
@@ -51,7 +56,8 @@ export class GameRenderer {
     const context = canvas.getContext('2d')
     if (!context) throw new Error('Canvas rendering is not supported in this browser.')
     this.context = context
-    this.hunterSpriteAtlas.src = `${artBase}hunter-sprites-v2.webp`
+    this.hunterSpriteAtlas.src = `${artBase}hunter-sprites-v3.webp`
+    this.weaponSpriteAtlas.src = `${artBase}weapon-sprites-v1.webp`
     this.companionSpriteAtlas.src = `${artBase}companion-sprites-v1.webp`
     this.enemySpriteAtlas.src = `${artBase}enemy-sprites.webp`
     this.structureAtlas.src = `${artBase}structure-atlas.webp`
@@ -436,7 +442,7 @@ export class GameRenderer {
 
       if (this.hunterSpriteAtlas.complete && this.hunterSpriteAtlas.naturalWidth > 0) {
         const local = player.id === localPlayerId
-        const size = player.character === 'bastion' ? 94 : 86
+        const size = player.character === 'bastion' ? 84 : 78
         const motion = Math.min(1, Math.hypot(player.vx, player.vy) / 170)
         const spriteIndex = CHARACTER_SPRITE_INDEX[player.character]
         const stride = Math.sin(performance.now() / 86 + spriteIndex * 1.91)
@@ -481,6 +487,27 @@ export class GameRenderer {
           transform.flipX,
         )
         context.restore()
+        if (!player.downed && this.weaponSpriteAtlas.complete && this.weaponSpriteAtlas.naturalWidth > 0) {
+          const weaponSize = player.weapon === 'railgun' || player.weapon === 'seeker' ? 78
+            : player.weapon === 'sword' || player.weapon === 'scattergun' ? 74 : 70
+          const weaponOffset = player.weapon === 'sword' ? 27 : 25
+          context.save()
+          context.shadowColor = player.color
+          context.shadowBlur = local ? 9 : 5
+          this.drawAtlasSprite(
+            this.weaponSpriteAtlas,
+            5,
+            2,
+            WEAPON_SPRITE_INDEX[player.weapon],
+            spriteX + Math.cos(player.aim) * weaponOffset,
+            spriteY + Math.sin(player.aim) * weaponOffset,
+            weaponSize,
+            weaponSize,
+            player.aim,
+            true,
+          )
+          context.restore()
+        }
         if (player.downed) {
           context.strokeStyle = '#ef718e'
           context.lineWidth = 2

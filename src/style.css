@@ -567,3 +567,110 @@ body::before {
   .team-hud { top: 76px; }
   .team-chip > .team-portrait { display: block; }
 }
+
+/* Illustrated draft and chronicle surfaces. The readable game UI stays dark while
+   every run gets a character-focused alternate-life vignette behind it. */
+.upgrade-overlay { isolation: isolate; overflow: hidden; }
+.upgrade-scene {
+  position: absolute;
+  z-index: 0;
+  inset: 0 0 0 auto;
+  width: min(50vw, 760px);
+  background-position: center 28%;
+  background-repeat: no-repeat;
+  background-size: cover;
+  filter: saturate(.92) contrast(1.06);
+  transform: scale(1.015);
+}
+.upgrade-scene::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, #020806 0, rgba(2,8,6,.62) 23%, rgba(2,8,6,.08) 72%), linear-gradient(0deg, rgba(2,8,6,.82), transparent 38%);
+}
+.upgrade-scene > span, .recap-scene > span {
+  position: absolute;
+  z-index: 1;
+  right: 24px;
+  bottom: 22px;
+  padding: 8px 11px;
+  border: 1px solid rgba(242,212,121,.3);
+  color: #f2d479;
+  background: rgba(2,8,6,.72);
+  font: 7px 'DM Mono', monospace;
+  letter-spacing: .13em;
+}
+.upgrade-backdrop {
+  z-index: 1;
+  background: linear-gradient(90deg, rgba(2,7,5,.98) 0%, rgba(2,7,5,.95) 49%, rgba(2,7,5,.64) 71%, rgba(2,7,5,.28) 100%);
+  backdrop-filter: none;
+}
+.upgrade-draft {
+  z-index: 2;
+  left: 42%;
+  width: min(900px, calc(100% - 480px));
+}
+.upgrade-draft > p:not(.eyebrow) { max-width: 790px; margin-left: auto; margin-right: auto; }
+.upgrade-status > div, .upgrade-card, .upgrade-waiting, .reroll-button { backdrop-filter: blur(8px); }
+.upgrade-card { background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 9%, rgba(7,18,14,.95)), rgba(3,10,8,.94)); }
+
+.recap-shell { width: min(1080px, calc(100% - 40px)); }
+.recap-shell::before {
+  background-image: radial-gradient(circle at 50% 0, rgba(63,89,70,.18), transparent 42%), linear-gradient(rgba(2,8,6,.96), rgba(2,8,6,.99));
+  filter: none;
+}
+.recap-hero {
+  min-height: 390px;
+  display: grid;
+  grid-template-columns: 1.28fr .92fr;
+  margin-bottom: 30px;
+  overflow: hidden;
+  border: 1px solid rgba(242,212,121,.22);
+  background: #07100e;
+  box-shadow: 0 28px 80px rgba(0,0,0,.46);
+  text-align: left;
+}
+.recap-shell.defeat .recap-hero { border-color: rgba(239,113,142,.22); }
+.recap-scene {
+  position: relative;
+  min-height: 390px;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+.recap-scene::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 62%, #07100e), linear-gradient(0deg, rgba(2,8,6,.48), transparent 32%);
+}
+.recap-shell.defeat .recap-scene { background-position: center 24%; }
+.recap-heading {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 44px 42px 44px 22px;
+}
+.recap-heading .recap-sigil { margin: 0 0 24px; }
+.recap-heading h1 { font-size: clamp(45px, 5.6vw, 72px); }
+.recap-heading > p:not(.eyebrow) { margin: 16px 0 0; color: var(--muted); font-size: 10px; line-height: 1.7; }
+.recap-stats { margin-top: 0; }
+
+@media (max-width: 1120px) {
+  .upgrade-draft { left: 50%; width: min(940px, calc(100% - 40px)); }
+  .upgrade-scene { width: 58vw; opacity: .62; }
+  .upgrade-backdrop { background: linear-gradient(90deg, rgba(2,7,5,.94), rgba(2,7,5,.72)); }
+}
+
+@media (max-width: 760px) {
+  .upgrade-scene { width: 100%; opacity: .4; background-position: center 22%; }
+  .upgrade-scene > span { display: none; }
+  .upgrade-backdrop { background: linear-gradient(0deg, rgba(2,7,5,.97) 0%, rgba(2,7,5,.78) 72%, rgba(2,7,5,.58) 100%); }
+  .recap-hero { grid-template-columns: 1fr; }
+  .recap-scene { min-height: 310px; }
+  .recap-scene::after { background: linear-gradient(0deg, #07100e, transparent 42%); }
+  .recap-heading { padding: 12px 24px 36px; text-align: center; }
+  .recap-heading .recap-sigil { margin: -34px auto 20px; background: #07100e; }
+}
