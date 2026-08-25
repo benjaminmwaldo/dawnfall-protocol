@@ -18,6 +18,8 @@ import type {
 const EMPTY_INPUT: InputState = { up: false, down: false, left: false, right: false, firing: false, interact: false, aim: 0 }
 const DRAFT_INPUT_DELAY = 0.5
 const SPAWN_PADDING = 110
+const HIT_INVULNERABILITY = 0.42
+const KINETIC_SHELL_BONUS = 0.28
 const BOSS_SCHEDULE: Array<{ at: number; type: BossType }> = [
   { at: 0.25, type: 'tollkeeper' },
   { at: 0.49, type: 'broodmother' },
@@ -747,7 +749,7 @@ export class GameEngine {
       + (player.reloadRemaining > 0 ? rank(player, 'shielded-mag') * 0.35 : 0)
     const finalDamage = amount * Math.max(0.3, 1 - auraReduction - personalReduction)
     player.health -= finalDamage
-    player.invulnerable = 0.58 + rank(player, 'kinetic-shell') * 0.37
+    player.invulnerable = HIT_INVULNERABILITY + rank(player, 'kinetic-shell') * KINETIC_SHELL_BONUS
     this.pushEvent('hurt', player.x, player.y)
 
     if (player.character === 'bastion' && rank(player, 'retaliation') > 0) {

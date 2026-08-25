@@ -70,7 +70,7 @@ export const UPGRADES: UpgradeDefinition[] = [
   common({ id: 'relentless', name: 'Relentless', icon: '⌁', description: 'Fire up to 60% faster as the magazine empties.', maxLevel: 1, accent: '#ffac72' }),
   common({ id: 'scavenger', name: 'Soul Feast', icon: '✧', description: 'Collected soul shards grant 40% more squad XP.', maxLevel: 1, accent: '#b6a5ff' }),
   common({ id: 'iron-heart', name: 'Last Stand', icon: '⬟', description: 'Below half health, gain +35% damage and +20% speed.', maxLevel: 1, accent: '#d58b72' }),
-  common({ id: 'kinetic-shell', name: 'Kinetic Shell', icon: '◉', description: 'Damage immunity after a hit lasts almost a full second.', maxLevel: 1, accent: '#7ed5ca' }),
+  common({ id: 'kinetic-shell', name: 'Kinetic Shell', icon: '◉', description: 'Extend post-hit immunity from 0.42 to 0.70 seconds.', maxLevel: 1, accent: '#7ed5ca' }),
   common({ id: 'ghost-rounds', name: 'Ghost Rounds', icon: '◌', description: 'Shots last 65% longer and pass through two more enemies.', maxLevel: 1, accent: '#a9c9d8' }),
 
   signature('vesper', { id: 'deadeye-rhythm', name: 'Deadeye Rhythm', icon: 'Ⅳ', description: 'Every fourth trigger pull is a guaranteed critical hit.', maxLevel: 1, accent: '#f2d479' }),

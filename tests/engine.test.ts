@@ -160,6 +160,32 @@ describe('GameEngine', () => {
     expect(hostile!.radius).toBeGreaterThan(6)
   })
 
+  it('keeps post-hit immunity brief even with Kinetic Shell', () => {
+    const engine = new GameEngine([player], 240, 317)
+    const target = engine.snapshot.players[0]
+    let projectileId = 81_000
+    const dealHit = () => {
+      engine.snapshot.projectiles.push({
+        id: projectileId++, ownerId: 'enemy-test', x: target.x, y: target.y, vx: 0, vy: 0,
+        radius: 8, damage: 10, life: 1, pierce: 0, bounces: 0, enemy: true,
+        chain: 0, burn: false, color: '#ef718e',
+      })
+      engine.step(0, new Map([[player.id, idle]]))
+    }
+
+    dealHit()
+    expect(target.health).toBe(90)
+    expect(target.invulnerable).toBeCloseTo(0.42)
+    dealHit()
+    expect(target.health).toBe(90)
+
+    target.invulnerable = 0
+    target.perks['kinetic-shell'] = 1
+    dealHit()
+    expect(target.health).toBe(80)
+    expect(target.invulnerable).toBeCloseTo(0.7)
+  })
+
   it('spawns every ambient enemy beyond every living player viewport', () => {
     const ally = { ...player, id: 'ally', name: 'Ally', character: 'warden' as const }
     const engine = new GameEngine([player, ally], 240, 414)
