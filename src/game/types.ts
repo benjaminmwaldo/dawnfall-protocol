@@ -82,6 +82,7 @@ export interface EnemyState {
   dashRemaining?: number
   dashAngle?: number
   strafeDirection?: number
+  finale?: boolean
 }
 
 export interface ProjectileState {

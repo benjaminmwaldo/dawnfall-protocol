@@ -24,8 +24,11 @@ const BOSS_SCHEDULE: Array<{ at: number; type: BossType }> = [
   { at: 0.25, type: 'tollkeeper' },
   { at: 0.49, type: 'broodmother' },
   { at: 0.72, type: 'graveknight' },
-  { at: 0.9, type: 'eclipse-eye' },
 ]
+const FINAL_ENCOUNTER_AT = 0.88
+const FINAL_TRIO: BossType[] = ['broodmother', 'graveknight', 'eclipse-eye']
+const FINAL_BOSS_HEALTH_MULTIPLIER = 1.75
+const FINAL_BOSS_CADENCE = 0.78
 
 const distanceSquared = (ax: number, ay: number, bx: number, by: number) => {
   const dx = ax - bx
@@ -59,6 +62,7 @@ export class GameEngine {
   private eventId = 1
   private spawnTimer = 0.25
   private nextBossIndex = 0
+  private finalEncounterStarted = false
   private readonly projectileHits = new Map<number, Set<number>>()
 
   constructor(configs: PlayerConfig[], duration: number, seed = Date.now()) {
@@ -96,12 +100,8 @@ export class GameEngine {
     }
     if (this.snapshot.phase !== 'playing') return this.snapshot
 
-    this.snapshot.timeRemaining = Math.max(0, this.snapshot.timeRemaining - delta)
-    if (this.snapshot.timeRemaining <= 0) {
-      this.snapshot.phase = 'victory'
-      this.pushEvent('win', undefined, undefined, 'DAWN BROKE. THE HUNTERS ENDURED.')
-      return this.snapshot
-    }
+    this.snapshot.timeRemaining -= delta
+    if (this.completeVictoryIfReady()) return this.snapshot
 
     this.updatePlayers(delta, inputs)
     this.updateCompanions(delta)
@@ -109,6 +109,7 @@ export class GameEngine {
     this.handleSpawns(delta, inputs)
     this.updateEnemies(delta, inputs)
     this.updateProjectiles(delta)
+    if (this.completeVictoryIfReady()) return this.snapshot
     this.updatePickups(delta)
     this.handleRevives(delta, inputs)
     this.checkLevelUp()
@@ -118,6 +119,14 @@ export class GameEngine {
       this.pushEvent('lose', undefined, undefined, 'THE NIGHT CLAIMED EVERY HUNTER.')
     }
     return this.snapshot
+  }
+
+  private completeVictoryIfReady(): boolean {
+    const finalBossAlive = this.snapshot.enemies.some((enemy) => enemy.finale && enemy.health > 0)
+    if (this.snapshot.timeRemaining > 0 || !this.finalEncounterStarted || finalBossAlive) return false
+    this.snapshot.phase = 'victory'
+    this.pushEvent('win', undefined, undefined, 'DAWN BROKE. THE DAWNLESS TRIUMVIRATE FELL.')
+    return true
   }
 
   chooseUpgrade(upgradeId: string, chooserId: string): boolean {
@@ -420,6 +429,12 @@ export class GameEngine {
 
   private handleSpawns(dt: number, inputs: ReadonlyMap<string, InputState>) {
     const progress = 1 - this.snapshot.timeRemaining / this.snapshot.duration
+    if (!this.finalEncounterStarted && progress >= FINAL_ENCOUNTER_AT) {
+      this.finalEncounterStarted = true
+      this.nextBossIndex = BOSS_SCHEDULE.length
+      for (const type of FINAL_TRIO) this.spawnEnemy(type, inputs, true)
+      this.pushEvent('boss', undefined, undefined, 'THE DAWNLESS TRIUMVIRATE HAS ENTERED THE HUNT')
+    }
     const scheduled = BOSS_SCHEDULE[this.nextBossIndex]
     if (scheduled && progress >= scheduled.at && !this.snapshot.enemies.some((enemy) => isBoss(enemy.type))) {
       this.nextBossIndex += 1
@@ -458,7 +473,7 @@ export class GameEngine {
     return { x: centerX + Math.cos(angle) * range, y: centerY + Math.sin(angle) * range }
   }
 
-  private spawnEnemy(type: EnemyType, inputs: ReadonlyMap<string, InputState>) {
+  private spawnEnemy(type: EnemyType, inputs: ReadonlyMap<string, InputState>, finale = false) {
     const spawn = this.findOffscreenSpawn(inputs)
     const progress = 1 - this.snapshot.timeRemaining / this.snapshot.duration
     const regularScale = 1 + progress * 1.6 + Math.max(0, this.snapshot.players.length - 1) * 0.34
@@ -478,19 +493,20 @@ export class GameEngine {
       'eclipse-eye': { hp: 6800, radius: 64, speed: 36, damage: 26 },
     }
     const base = stats[type]
-    const scale = isBoss(type) ? bossScale : regularScale
+    const scale = isBoss(type) ? bossScale * (finale ? FINAL_BOSS_HEALTH_MULTIPLIER : 1) : regularScale
     this.snapshot.enemies.push({
       id: this.entityId++, type,
       x: spawn.x, y: spawn.y,
       vx: 0, vy: 0, health: base.hp * scale, maxHealth: base.hp * scale, radius: base.radius,
-      speed: base.speed, damage: base.damage, attackCooldown: this.random.range(0, 0.45),
+      speed: base.speed * (finale ? 1.1 : 1), damage: base.damage * (finale ? 1.2 : 1), attackCooldown: this.random.range(0, finale ? 0.18 : 0.45),
       burn: 0, burnTick: 0.5, slow: 0, phase: this.random.range(0, Math.PI * 2),
-      abilityCooldown: isBoss(type) ? this.random.range(1, 2) : 0,
-      summonCooldown: isBoss(type) ? this.random.range(3.2, 4.8) : 0,
+      abilityCooldown: isBoss(type) ? this.random.range(finale ? 0.45 : 1, finale ? 1.1 : 2) : 0,
+      summonCooldown: isBoss(type) ? this.random.range(finale ? 1.8 : 3.2, finale ? 3 : 4.8) : 0,
       contactCooldown: 0,
       dashRemaining: 0,
       dashAngle: 0,
       strafeDirection: this.random.next() < 0.5 ? -1 : 1,
+      finale,
     })
   }
 
@@ -526,6 +542,7 @@ export class GameEngine {
       let angle = Math.atan2(target.y - enemy.y, target.x - enemy.x)
       const distance = Math.sqrt(distanceSquared(enemy.x, enemy.y, target.x, target.y))
       let speed = enemy.speed * (enemy.slow > 0 ? 0.48 : 1)
+      const bossCadence = enemy.finale ? FINAL_BOSS_CADENCE : 1
       if (enemy.type === 'wraith') angle += Math.sin(enemy.phase * 3) * 0.32
       if (enemy.type === 'charger' && enemy.phase % 4.2 < 0.9) speed *= 2.25
       if (enemy.type === 'leech') speed *= 1.12
@@ -541,17 +558,17 @@ export class GameEngine {
       if (enemy.type === 'tollkeeper') {
         if (enemy.attackCooldown <= 0 && distance < 900) {
           for (let shot = 0; shot < 12; shot += 1) this.spawnEnemyProjectile(enemy, shot / 12 * Math.PI * 2 + enemy.phase * 0.42, 118, 9)
-          enemy.attackCooldown = 3.3
+          enemy.attackCooldown = 3.3 * bossCadence
         }
         if ((enemy.abilityCooldown ?? 0) <= 0) {
           enemy.dashAngle = angle
           enemy.dashRemaining = 0.62
-          enemy.abilityCooldown = 5.1
+          enemy.abilityCooldown = 5.1 * bossCadence
           for (let shot = -1; shot <= 1; shot += 1) this.spawnEnemyProjectile(enemy, angle + shot * 0.18, 128, 10)
         }
         if ((enemy.summonCooldown ?? 0) <= 0) {
           this.summonBossAdds(['thrall', 'thrall', 'wraith'], inputs)
-          enemy.summonCooldown = 8.2
+          enemy.summonCooldown = 8.2 * bossCadence
         }
       }
 
@@ -559,34 +576,34 @@ export class GameEngine {
         if (distance < 260) angle += Math.PI
         if (enemy.attackCooldown <= 0 && distance < 940) {
           for (let shot = 0; shot < 10; shot += 1) this.spawnEnemyProjectile(enemy, shot / 10 * Math.PI * 2 - enemy.phase * 0.5, 108, 8)
-          enemy.attackCooldown = 2.85
+          enemy.attackCooldown = 2.85 * bossCadence
         }
         if ((enemy.abilityCooldown ?? 0) <= 0) {
           enemy.dashAngle = angle + (enemy.strafeDirection ?? 1) * Math.PI / 2
           enemy.dashRemaining = 0.5
-          enemy.abilityCooldown = 4.6
+          enemy.abilityCooldown = 4.6 * bossCadence
           enemy.strafeDirection = -(enemy.strafeDirection ?? 1)
         }
         if ((enemy.summonCooldown ?? 0) <= 0) {
           this.summonBossAdds(['skitter', 'skitter', 'skitter', 'skitter', 'skitter', 'leech', 'leech'], inputs)
-          enemy.summonCooldown = 5.8
+          enemy.summonCooldown = 5.8 * bossCadence
         }
       }
 
       if (enemy.type === 'graveknight') {
         if (enemy.attackCooldown <= 0 && distance < 850) {
           for (let shot = -2; shot <= 2; shot += 1) this.spawnEnemyProjectile(enemy, angle + shot * 0.16, 145, 11)
-          enemy.attackCooldown = 2.4
+          enemy.attackCooldown = 2.4 * bossCadence
         }
         if ((enemy.abilityCooldown ?? 0) <= 0) {
           enemy.dashAngle = angle
           enemy.dashRemaining = 0.78
-          enemy.abilityCooldown = 4.1
+          enemy.abilityCooldown = 4.1 * bossCadence
           for (let shot = -3; shot <= 3; shot += 1) this.spawnEnemyProjectile(enemy, angle + shot * 0.09, 150, 12)
         }
         if ((enemy.summonCooldown ?? 0) <= 0) {
           this.summonBossAdds(['wraith', 'wraith', 'wraith'], inputs)
-          enemy.summonCooldown = 8.4
+          enemy.summonCooldown = 8.4 * bossCadence
         }
       }
 
@@ -595,19 +612,19 @@ export class GameEngine {
         speed *= 1.2
         if (enemy.attackCooldown <= 0 && distance < 980) {
           for (let shot = 0; shot < 16; shot += 1) this.spawnEnemyProjectile(enemy, shot / 16 * Math.PI * 2 + enemy.phase * 0.7, 105, 10)
-          enemy.attackCooldown = 2.35
+          enemy.attackCooldown = 2.35 * bossCadence
         }
         if ((enemy.abilityCooldown ?? 0) <= 0) {
           enemy.dashAngle = angle
           enemy.dashRemaining = 0.58
-          enemy.abilityCooldown = 4.2
+          enemy.abilityCooldown = 4.2 * bossCadence
           enemy.strafeDirection = -(enemy.strafeDirection ?? 1)
           const aimed = Math.atan2(target.y - enemy.y, target.x - enemy.x)
           for (let shot = -2; shot <= 2; shot += 1) this.spawnEnemyProjectile(enemy, aimed + shot * 0.12, 132, 10)
         }
         if ((enemy.summonCooldown ?? 0) <= 0) {
           this.summonBossAdds(['hexer', 'hexer', 'wraith', 'wraith'], inputs)
-          enemy.summonCooldown = 7.2
+          enemy.summonCooldown = 7.2 * bossCadence
         }
       }
 
@@ -717,6 +734,10 @@ export class GameEngine {
     const pickup: PickupState = { id: this.entityId++, x: enemy.x, y: enemy.y, value: values[enemy.type] }
     this.snapshot.pickups.push(pickup)
 
+    if (enemy.finale) {
+      const remaining = this.snapshot.enemies.filter((candidate) => candidate.finale && candidate.id !== enemy.id && candidate.health > 0).length
+      this.pushEvent('boss', enemy.x, enemy.y, remaining > 0 ? `TRIUMVIRATE BROKEN · ${remaining} REMAIN` : 'THE DAWNLESS TRIUMVIRATE IS SHATTERED')
+    }
     if (isBoss(enemy.type)) this.rewardBoss(enemy.type)
     const burnOwner = this.snapshot.players.find((player) => player.id === enemy.burnOwner)
     if (burnOwner && (rank(burnOwner, 'combustion') > 0 || (burnOwner.character === 'cinder' && (burnOwner.awakened || rank(burnOwner, 'flashpoint') > 0)))) {

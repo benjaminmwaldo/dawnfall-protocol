@@ -254,6 +254,27 @@ describe('GameEngine', () => {
     expect(engine.snapshot.players[0].awakened).toBe(true)
   })
 
+  it('forces an empowered three-boss finale and continues into overtime until all three die', () => {
+    const engine = new GameEngine([player], 240, 909)
+    const viewportInput = { ...idle, viewportWidth: 1280, viewportHeight: 720 }
+    engine.snapshot.timeRemaining = engine.snapshot.duration * 0.12
+    engine.step(0.05, new Map([[player.id, viewportInput]]))
+
+    const finale = engine.snapshot.enemies.filter((enemy) => enemy.finale)
+    expect(engine.snapshot.timeRemaining).toBeGreaterThan(0)
+    expect(finale.map((enemy) => enemy.type).sort()).toEqual(['broodmother', 'eclipse-eye', 'graveknight'])
+    expect(finale.reduce((total, enemy) => total + enemy.maxHealth, 0)).toBeGreaterThan(30_000)
+
+    engine.snapshot.timeRemaining = 0.01
+    engine.step(0.05, new Map([[player.id, viewportInput]]))
+    expect(engine.snapshot.timeRemaining).toBeLessThan(0)
+    expect(engine.snapshot.phase).toBe('playing')
+
+    for (const boss of finale) boss.health = 0
+    engine.step(0, new Map([[player.id, viewportInput]]))
+    expect(engine.snapshot.phase).toBe('victory')
+  })
+
   it('keeps the hunt running for surviving allies after one player is eliminated', () => {
     const ally = { ...player, id: 'ally', name: 'Ally', character: 'seraph' as const, color: '#ffd783' }
     const engine = new GameEngine([player, ally], 240, 808)

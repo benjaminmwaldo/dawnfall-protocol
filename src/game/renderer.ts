@@ -278,7 +278,7 @@ export class GameRenderer {
       const color = burning ? '#ff735c' : enemy.slow > 0 ? '#9bd6ff' : '#e8eee7'
       if (this.enemySpriteAtlas.complete && this.enemySpriteAtlas.naturalWidth > 0) {
         const boss = isBoss(enemy.type)
-        const size = boss ? 174 : enemy.type === 'bulwark' ? 116 : enemy.type === 'spitter' || enemy.type === 'leech' ? 72 : enemy.type === 'charger' ? 94 : 82
+        const size = boss ? enemy.finale ? 194 : 174 : enemy.type === 'bulwark' ? 116 : enemy.type === 'spitter' || enemy.type === 'leech' ? 72 : enemy.type === 'charger' ? 94 : 82
         const movement = Math.hypot(enemy.vx, enemy.vy)
         const facing = movement > 0.1 ? Math.atan2(enemy.vy, enemy.vx) : (this.enemyFacing.get(enemy.id) ?? 0)
         if (movement > 0.1) this.enemyFacing.set(enemy.id, facing)
@@ -292,7 +292,7 @@ export class GameRenderer {
         context.ellipse(x, y + enemy.radius * 0.72, size * 0.28, size * 0.12, 0, 0, TAU)
         context.fill()
         context.shadowColor = burning ? '#ff593d' : enemy.slow > 0 ? '#82ceff' : boss ? '#ef375e' : 'rgba(0,0,0,0)'
-        context.shadowBlur = burning || enemy.slow > 0 ? 20 : boss ? 16 : 0
+        context.shadowBlur = burning || enemy.slow > 0 ? 20 : enemy.finale ? 28 : boss ? 16 : 0
         this.drawAtlasSprite(
           this.enemySpriteAtlas,
           4,
@@ -311,7 +311,7 @@ export class GameRenderer {
           context.strokeStyle = `rgba(239, 113, 142, ${0.28 + Math.sin(enemy.phase * 2) * 0.08})`
           context.lineWidth = 2
           context.beginPath()
-          context.arc(x, y, 69 + Math.sin(enemy.phase * 2) * 4, 0, TAU)
+          context.arc(x, y, (enemy.finale ? 80 : 69) + Math.sin(enemy.phase * 2) * 4, 0, TAU)
           context.stroke()
         }
         if (boss || (enemy.type === 'bulwark' && enemy.maxHealth > 500)) {

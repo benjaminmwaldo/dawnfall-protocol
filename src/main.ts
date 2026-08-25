@@ -2,7 +2,7 @@ import './style.css'
 import { BOSS_NAMES, CHARACTERS, PLAYER_COLORS, UPGRADES, WEAPONS, characterById, isBoss, teamBuffById, upgradeById, weaponById } from './game/data'
 import { GameEngine } from './game/engine'
 import { GameRenderer } from './game/renderer'
-import type { GameSnapshot, InputState, PlayerConfig } from './game/types'
+import type { BossType, GameSnapshot, InputState, PlayerConfig } from './game/types'
 import { MultiplayerSession } from './network'
 
 type Screen = 'home' | 'lobby' | 'game' | 'recap'
@@ -13,7 +13,11 @@ if (!app) throw new Error('App shell was not found.')
 
 const makePlayerId = () => crypto.randomUUID().slice(0, 8)
 const escapeHtml = (text: string) => text.replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character] ?? character)
-const formatTime = (seconds: number) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`
+const formatTime = (seconds: number) => {
+  const absolute = Math.max(0, Math.floor(Math.abs(seconds)))
+  return `${seconds < 0 ? '+' : ''}${Math.floor(absolute / 60).toString().padStart(2, '0')}:${(absolute % 60).toString().padStart(2, '0')}`
+}
+const FINAL_TRIO_TYPES: BossType[] = ['broodmother', 'graveknight', 'eclipse-eye']
 const ART_BASE = `${import.meta.env.BASE_URL}art/`
 const CHARACTER_ART_INDEX: Record<PlayerConfig['character'], number> = { vesper: 0, cinder: 1, bastion: 2, warden: 3, nyx: 4, tempest: 5, briar: 6, seraph: 7 }
 const COMPANION_ART_INDEX: Partial<Record<string, number>> = { gravewing: 0, ashkit: 1, 'aegis-hound': 2, 'mercy-moth': 3, shadecat: 4, 'storm-wisp': 5, thornling: 6, sunbird: 7 }
@@ -347,7 +351,7 @@ class DawnfallApp {
         <canvas id="game-canvas" aria-label="Dawnfall Protocol game arena"></canvas>
         <section class="game-hud" aria-live="off">
           <div class="hud-top-left"><span class="hud-brand">◈ DAWNFALL</span><div id="level-readout">LV. 01</div></div>
-          <div class="timer-block"><small>UNTIL DAWN</small><strong id="timer-readout">${formatTime(this.snapshot?.timeRemaining ?? this.duration)}</strong><div class="xp-track"><i id="xp-fill"></i></div></div>
+          <div class="timer-block"><small id="timer-label">UNTIL DAWN</small><strong id="timer-readout">${formatTime(this.snapshot?.timeRemaining ?? this.duration)}</strong><div class="xp-track"><i id="xp-fill"></i></div></div>
           <button class="mute-button" id="mute-button" aria-label="Toggle sound">SOUND ON</button>
           <div class="team-hud" id="team-hud"></div>
           <div class="team-buffs-hud" id="team-buffs-hud"></div>
@@ -485,9 +489,14 @@ class DawnfallApp {
     const focusId = this.resolveFocusPlayerId(snapshot)
     const hudPlayer = localPlayer?.eliminated ? snapshot.players.find((player) => player.id === focusId) ?? localPlayer : localPlayer
     const timer = document.querySelector('#timer-readout')
+    const timerLabel = document.querySelector('#timer-label')
     const level = document.querySelector('#level-readout')
     const xpFill = document.querySelector<HTMLElement>('#xp-fill')
-    if (timer) timer.textContent = formatTime(snapshot.timeRemaining)
+    if (timer) {
+      timer.textContent = formatTime(snapshot.timeRemaining)
+      timer.classList.toggle('overtime', snapshot.timeRemaining < 0)
+    }
+    if (timerLabel) timerLabel.textContent = snapshot.timeRemaining < 0 ? 'OVERTIME · SLAY THE TRIO' : 'UNTIL DAWN'
     if (level) level.textContent = `${localPlayer?.eliminated ? 'WATCHING · ' : ''}LV. ${(hudPlayer?.level ?? 1).toString().padStart(2, '0')}`
     if (xpFill) xpFill.style.width = `${Math.min(100, ((hudPlayer?.xp ?? 0) / Math.max(1, hudPlayer?.xpToNext ?? 1)) * 100)}%`
 
@@ -510,11 +519,19 @@ class DawnfallApp {
       ammo.innerHTML = `<small>${localPlayer?.eliminated ? `${escapeHtml(hudPlayer.name.toUpperCase())} · ` : ''}${weaponById(hudPlayer.weapon).name.toUpperCase()}</small><strong>${reloading ? 'RELOAD' : `${hudPlayer.ammo} / ${hudPlayer.maxAmmo}`}</strong><i><em style="width:${reloadProgress * 100}%"></em></i>`
     }
 
+    const finaleBosses = snapshot.enemies.filter((enemy) => enemy.finale && enemy.health > 0)
     const boss = snapshot.enemies.find((enemy) => isBoss(enemy.type))
     const bossHud = document.querySelector<HTMLElement>('#boss-hud')
     if (bossHud) {
-      bossHud.classList.toggle('visible', Boolean(boss))
-      bossHud.innerHTML = boss && isBoss(boss.type) ? `<span>${BOSS_NAMES[boss.type]}</span><i><em style="width:${(boss.health / boss.maxHealth) * 100}%"></em></i>` : ''
+      bossHud.classList.toggle('visible', finaleBosses.length > 0 || Boolean(boss))
+      if (finaleBosses.length > 0) {
+        bossHud.innerHTML = `<span>DAWNLESS TRIUMVIRATE · ${finaleBosses.length}/3 REMAIN</span><div class="trio-health">${FINAL_TRIO_TYPES.map((type) => {
+          const member = finaleBosses.find((enemy) => enemy.type === type)
+          return `<i title="${BOSS_NAMES[type]}"><em style="width:${member ? (member.health / member.maxHealth) * 100 : 0}%"></em></i>`
+        }).join('')}</div>`
+      } else {
+        bossHud.innerHTML = boss && isBoss(boss.type) ? `<span>${BOSS_NAMES[boss.type]}</span><i><em style="width:${(boss.health / boss.maxHealth) * 100}%"></em></i>` : ''
+      }
     }
     const teamBuffs = document.querySelector<HTMLElement>('#team-buffs-hud')
     if (teamBuffs) teamBuffs.innerHTML = Object.entries(snapshot.teamBuffs).filter(([, buffRank]) => buffRank > 0).map(([id, buffRank]) => {

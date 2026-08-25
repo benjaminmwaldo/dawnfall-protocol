@@ -204,6 +204,9 @@ body::before {
 .boss-hud span { color: var(--red); font: 500 12px 'Oswald', sans-serif; letter-spacing: .18em; }
 .boss-hud i { display: block; height: 4px; margin-top: 6px; background: rgba(255,255,255,.12); }
 .boss-hud em { display: block; height: 100%; background: var(--red); }
+.boss-hud .trio-health { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.boss-hud .trio-health i { margin-top: 6px; }
+.timer-block strong.overtime { color: var(--red); text-shadow: 0 0 18px rgba(239,113,142,.42); }
 .event-banner { position: absolute; left: 50%; top: 138px; color: var(--gold); font: 500 15px 'Oswald', sans-serif; letter-spacing: .12em; text-align: center; transform: translate(-50%, -8px); opacity: 0; }
 .event-banner.show { animation: banner 3.3s both; }
 .spectator-hud { position: absolute; left: 50%; bottom: 106px; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid rgba(242,212,121,.28); background: rgba(3,11,8,.92); opacity: 0; transform: translate(-50%, 12px); transition: .2s; pointer-events: none; }
