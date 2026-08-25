@@ -21,7 +21,17 @@ const FINAL_TRIO_TYPES: BossType[] = ['broodmother', 'graveknight', 'eclipse-eye
 const ART_BASE = `${import.meta.env.BASE_URL}art/`
 const CHARACTER_ART_INDEX: Record<PlayerConfig['character'], number> = { vesper: 0, cinder: 1, bastion: 2, warden: 3, nyx: 4, tempest: 5, briar: 6, seraph: 7 }
 const COMPANION_ART_INDEX: Partial<Record<string, number>> = { gravewing: 0, ashkit: 1, 'aegis-hound': 2, 'mercy-moth': 3, shadecat: 4, 'storm-wisp': 5, thornling: 6, sunbird: 7 }
-const WEAPON_ART_INDEX: Record<PlayerConfig['weapon'], number> = { revolver: 0, scattergun: 1, 'arc-rifle': 2 }
+const WEAPON_ART: Record<PlayerConfig['weapon'], { file: string; columns: number; rows: number; index: number }> = {
+  revolver: { file: 'armory-atlas.webp', columns: 3, rows: 2, index: 0 },
+  scattergun: { file: 'armory-atlas.webp', columns: 3, rows: 2, index: 1 },
+  'arc-rifle': { file: 'armory-atlas.webp', columns: 3, rows: 2, index: 2 },
+  'burst-carbine': { file: 'armory-atlas-v2.webp', columns: 3, rows: 2, index: 0 },
+  railgun: { file: 'armory-atlas-v2.webp', columns: 3, rows: 2, index: 1 },
+  'grenade-launcher': { file: 'armory-atlas-v2.webp', columns: 3, rows: 2, index: 2 },
+  flamethrower: { file: 'armory-atlas-v2.webp', columns: 3, rows: 2, index: 3 },
+  'frost-cannon': { file: 'armory-atlas-v2.webp', columns: 3, rows: 2, index: 4 },
+  seeker: { file: 'armory-atlas-v2.webp', columns: 3, rows: 2, index: 5 },
+}
 const atlasStyle = (file: string, columns: number, rows: number, index: number) => {
   const column = index % columns
   const row = Math.floor(index / columns)
@@ -30,7 +40,10 @@ const atlasStyle = (file: string, columns: number, rows: number, index: number) 
   return `background-image:url('${ART_BASE}${file}');background-size:${columns * 100}% ${rows * 100}%;background-position:${x}% ${y}%;`
 }
 const portraitStyle = (character: PlayerConfig['character']) => atlasStyle('hunter-portraits-v2.webp', 4, 2, CHARACTER_ART_INDEX[character])
-const weaponArtStyle = (weapon: PlayerConfig['weapon']) => atlasStyle('armory-atlas.webp', 3, 2, WEAPON_ART_INDEX[weapon])
+const weaponArtStyle = (weapon: PlayerConfig['weapon']) => {
+  const art = WEAPON_ART[weapon]
+  return atlasStyle(art.file, art.columns, art.rows, art.index)
+}
 const perkArtStyle = (perkId: string) => atlasStyle('perk-atlas.webp', 4, 3, Math.max(0, UPGRADES.slice(0, 12).findIndex((perk) => perk.id === perkId)))
 const perkIconMarkup = (perkId: string, className: string, tag: 'span' | 'i' = 'span', badge?: number) => {
   const upgrade = upgradeById(perkId)

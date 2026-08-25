@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CHARACTERS, UPGRADES } from '../src/game/data'
+import { CHARACTERS, UPGRADES, WEAPONS } from '../src/game/data'
 import { GameEngine } from '../src/game/engine'
 import { uprightSpriteTransform } from '../src/game/renderer'
 import type { InputState, PlayerConfig } from '../src/game/types'
@@ -18,6 +18,60 @@ describe('GameEngine', () => {
     for (const character of CHARACTERS) {
       expect(UPGRADES.filter((upgrade) => upgrade.character === character.id)).toHaveLength(5)
     }
+  })
+
+  it('offers nine weapons with distinct firing signatures and special payloads', () => {
+    expect(WEAPONS).toHaveLength(9)
+    expect(new Set(WEAPONS.map((weapon) => weapon.id)).size).toBe(9)
+    const signatures = WEAPONS.map((weapon) => [
+      weapon.damage, weapon.fireRate, weapon.projectiles, weapon.magazine, weapon.speed, weapon.spread,
+      weapon.pierce, weapon.chain, weapon.life, weapon.radius, weapon.blastRadius ?? 0,
+      weapon.homing ?? 0, weapon.slowDuration ?? 0, Number(Boolean(weapon.alwaysBurn)),
+    ].join(':'))
+    expect(new Set(signatures).size).toBe(9)
+
+    for (const weapon of WEAPONS) {
+      const armedPlayer = { ...player, weapon: weapon.id }
+      const engine = new GameEngine([armedPlayer], 240, 40 + weapon.magazine)
+      engine.step(1 / 60, new Map([[player.id, { ...idle, firing: true }]]))
+      expect(engine.snapshot.projectiles.filter((projectile) => projectile.ownerId === player.id)).toHaveLength(weapon.projectiles)
+    }
+
+    const burst = new GameEngine([{ ...player, weapon: 'burst-carbine' }], 240, 51)
+    burst.step(1 / 60, new Map([[player.id, { ...idle, firing: true }]]))
+    expect(burst.snapshot.projectiles).toHaveLength(3)
+
+    const rail = new GameEngine([{ ...player, weapon: 'railgun' }], 240, 52)
+    rail.step(1 / 60, new Map([[player.id, { ...idle, firing: true }]]))
+    expect(rail.snapshot.projectiles[0].pierce).toBeGreaterThanOrEqual(5)
+
+    const flame = new GameEngine([{ ...player, weapon: 'flamethrower' }], 240, 53)
+    flame.step(1 / 60, new Map([[player.id, { ...idle, firing: true }]]))
+    expect(flame.snapshot.projectiles.every((projectile) => projectile.burn && projectile.life < 0.4)).toBe(true)
+
+    const frost = new GameEngine([{ ...player, weapon: 'frost-cannon' }], 240, 54)
+    frost.step(1 / 60, new Map([[player.id, { ...idle, firing: true }]]))
+    expect(frost.snapshot.projectiles[0].slowDuration).toBe(4)
+
+    const seeker = new GameEngine([{ ...player, weapon: 'seeker' }], 240, 55)
+    seeker.snapshot.enemies.push({
+      id: 81_100, type: 'thrall', x: 180, y: 140, vx: 0, vy: 0, health: 500, maxHealth: 500,
+      radius: 13, speed: 0, damage: 0, attackCooldown: 9, burn: 0, burnTick: 0.5, slow: 0, phase: 0,
+    })
+    seeker.step(0.05, new Map([[player.id, { ...idle, firing: true }]]))
+    expect(seeker.snapshot.projectiles.every((projectile) => projectile.homing === 3.8 && projectile.vy > 0)).toBe(true)
+  })
+
+  it('detonates Starfall shells across clustered enemies', () => {
+    const engine = new GameEngine([{ ...player, weapon: 'grenade-launcher' }], 240, 61)
+    engine.snapshot.enemies.push(
+      { id: 82_001, type: 'thrall', x: 150, y: 0, vx: 0, vy: 0, health: 500, maxHealth: 500, radius: 13, speed: 0, damage: 0, attackCooldown: 9, burn: 0, burnTick: 0.5, slow: 0, phase: 0 },
+      { id: 82_002, type: 'thrall', x: 220, y: 0, vx: 0, vy: 0, health: 500, maxHealth: 500, radius: 13, speed: 0, damage: 0, attackCooldown: 9, burn: 0, burnTick: 0.5, slow: 0, phase: 0 },
+    )
+    engine.step(0.05, new Map([[player.id, { ...idle, firing: true }]]))
+    for (let tick = 0; tick < 8; tick += 1) engine.step(0.05, new Map([[player.id, idle]]))
+    expect(engine.snapshot.enemies.find((enemy) => enemy.id === 82_001)!.health).toBeLessThan(500)
+    expect(engine.snapshot.enemies.find((enemy) => enemy.id === 82_002)!.health).toBeLessThan(500)
   })
 
   it('repeats the same combat state from the same seed and inputs', () => {

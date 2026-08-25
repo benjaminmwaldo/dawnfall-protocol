@@ -25,6 +25,14 @@ export interface WeaponDefinition {
   spread: number
   pierce: number
   chain: number
+  life: number
+  radius: number
+  color?: string
+  blastRadius?: number
+  blastDamage?: number
+  homing?: number
+  slowDuration?: number
+  alwaysBurn?: boolean
 }
 
 export const CHARACTERS: CharacterDefinition[] = [
@@ -39,9 +47,15 @@ export const CHARACTERS: CharacterDefinition[] = [
 ]
 
 export const WEAPONS: WeaponDefinition[] = [
-  { id: 'revolver', name: 'Oathkeeper', glyph: '⌁', description: 'Six precise shots. High damage and clean criticals.', damage: 30, fireRate: 3.1, projectiles: 1, magazine: 6, reload: 1.05, speed: 650, spread: 0.025, pierce: 0, chain: 0 },
-  { id: 'scattergun', name: 'Gravesong', glyph: '≋', description: 'A short-range fan that erases crowded lanes.', damage: 12, fireRate: 1.25, projectiles: 5, magazine: 4, reload: 1.3, speed: 530, spread: 0.5, pierce: 0, chain: 0 },
-  { id: 'arc-rifle', name: 'Blue Ruin', glyph: 'ϟ', description: 'Fast rounds that arc into a second target.', damage: 15, fireRate: 5.4, projectiles: 1, magazine: 16, reload: 1.55, speed: 600, spread: 0.045, pierce: 0, chain: 1 },
+  { id: 'revolver', name: 'Oathkeeper', glyph: '⌁', description: 'Six precise shots. High damage and clean criticals.', damage: 30, fireRate: 3.1, projectiles: 1, magazine: 6, reload: 1.05, speed: 650, spread: 0.025, pierce: 0, chain: 0, life: 1.25, radius: 4.5 },
+  { id: 'scattergun', name: 'Gravesong', glyph: '≋', description: 'Five short-range shells carve a wide killing fan.', damage: 12, fireRate: 1.25, projectiles: 5, magazine: 4, reload: 1.3, speed: 530, spread: 0.5, pierce: 0, chain: 0, life: 0.58, radius: 4.2 },
+  { id: 'arc-rifle', name: 'Blue Ruin', glyph: 'ϟ', description: 'Rapid storm rounds leap into a second target.', damage: 15, fireRate: 5.4, projectiles: 1, magazine: 16, reload: 1.55, speed: 600, spread: 0.045, pierce: 0, chain: 1, life: 1.25, radius: 4.5, color: '#65bfff' },
+  { id: 'burst-carbine', name: 'Threefold', glyph: 'Ⅲ', description: 'Each trigger launches a tight three-round burst.', damage: 11, fireRate: 2.65, projectiles: 3, magazine: 8, reload: 1.25, speed: 610, spread: 0.12, pierce: 0, chain: 0, life: 1.15, radius: 4, color: '#f1d9a2' },
+  { id: 'railgun', name: 'Last Verdict', glyph: '━', description: 'A colossal rune rail punches through six bodies.', damage: 95, fireRate: 0.65, projectiles: 1, magazine: 3, reload: 1.8, speed: 900, spread: 0.004, pierce: 5, chain: 0, life: 1.45, radius: 7.2, color: '#fff0bd' },
+  { id: 'grenade-launcher', name: 'Starfall', glyph: '✺', description: 'Heavy shells erupt across a wide impact circle.', damage: 38, fireRate: 0.85, projectiles: 1, magazine: 5, reload: 1.7, speed: 360, spread: 0.025, pierce: 0, chain: 0, life: 1.25, radius: 9, blastRadius: 120, blastDamage: 34, color: '#e8b85f' },
+  { id: 'flamethrower', name: 'Cinderhose', glyph: '♨', description: 'A short inferno floods close lanes and always ignites.', damage: 5, fireRate: 9, projectiles: 2, magazine: 50, reload: 1.9, speed: 330, spread: 0.28, pierce: 0, chain: 0, life: 0.32, radius: 6, alwaysBurn: true, color: '#ff735c' },
+  { id: 'frost-cannon', name: 'Wintermute', glyph: '❄', description: 'Massive crystal rounds pierce and freeze the horde.', damage: 45, fireRate: 1.05, projectiles: 1, magazine: 6, reload: 1.6, speed: 310, spread: 0.012, pierce: 2, chain: 0, life: 1.8, radius: 12, slowDuration: 4, color: '#9bdcff' },
+  { id: 'seeker', name: 'Nightjar', glyph: '⌁', description: 'Paired spectral missiles bend toward living targets.', damage: 24, fireRate: 2, projectiles: 2, magazine: 8, reload: 1.65, speed: 420, spread: 0.16, pierce: 0, chain: 0, life: 2, radius: 6.5, homing: 3.8, color: '#9c82ff' },
 ]
 
 const common = (definition: Omit<UpgradeDefinition, 'category' | 'character'>): UpgradeDefinition => ({ ...definition, category: 'common' })

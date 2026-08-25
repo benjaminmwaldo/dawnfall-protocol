@@ -1,5 +1,8 @@
 export type CharacterId = 'vesper' | 'cinder' | 'bastion' | 'warden' | 'nyx' | 'tempest' | 'briar' | 'seraph'
-export type WeaponId = 'revolver' | 'scattergun' | 'arc-rifle'
+export type WeaponId =
+  | 'revolver' | 'scattergun' | 'arc-rifle'
+  | 'burst-carbine' | 'railgun' | 'grenade-launcher'
+  | 'flamethrower' | 'frost-cannon' | 'seeker'
 export type EnemyType =
   | 'thrall' | 'skitter' | 'spitter' | 'bulwark'
   | 'wraith' | 'charger' | 'hexer' | 'leech'
@@ -101,6 +104,10 @@ export interface ProjectileState {
   chain: number
   burn: boolean
   color: string
+  blastRadius?: number
+  blastDamage?: number
+  homing?: number
+  slowDuration?: number
 }
 
 export interface PickupState {

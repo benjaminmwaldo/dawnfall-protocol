@@ -15,7 +15,8 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
   await expect(page.getByText('CHOOSE YOUR HUNTER')).toBeVisible()
   await expect(page.locator('.portrait-art')).toHaveCount(8)
   await expect(page.locator('.portrait-art').first()).toHaveCSS('background-image', /hunter-portraits-v2\.webp/)
-  await expect(page.locator('.weapon-art')).toHaveCount(3)
+  await expect(page.locator('.weapon-art')).toHaveCount(9)
+  await expect(page.locator('[data-weapon="seeker"]')).toContainText('Nightjar')
   await page.getByTestId('launch-button').click()
   await expect(page.getByTestId('game-shell')).toBeVisible()
   await expect(page.locator('#game-canvas')).toBeVisible()
@@ -30,6 +31,7 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
   expect(loadedArt).toEqual(expect.arrayContaining([
     expect.stringContaining('hero-night.webp'),
     expect.stringContaining('hunter-portraits-v2.webp'),
+    expect.stringContaining('armory-atlas-v2.webp'),
     expect.stringContaining('hunter-sprites-v2.webp'),
     expect.stringContaining('companion-sprites-v1.webp'),
     expect.stringContaining('enemy-sprites.webp'),

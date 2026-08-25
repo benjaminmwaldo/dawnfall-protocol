@@ -338,9 +338,9 @@ export class GameEngine {
         y: player.y + Math.sin(angle) * 20,
         vx: Math.cos(angle) * projectileSpeed,
         vy: Math.sin(angle) * projectileSpeed,
-        radius: (critical ? 6.6 : 4.5) * Math.pow(1.25, rank(player, 'heavy-caliber')) * Math.pow(1.35, rank(player, 'rose-thorns')),
+        radius: weapon.radius * (critical ? 1.47 : 1) * Math.pow(1.25, rank(player, 'heavy-caliber')) * Math.pow(1.35, rank(player, 'rose-thorns')),
         damage: baseDamage * (critical ? criticalMultiplier : 1),
-        life: (weapon.id === 'scattergun' ? 0.58 : 1.25) * Math.pow(1.65, rank(player, 'ghost-rounds')),
+        life: weapon.life * Math.pow(1.65, rank(player, 'ghost-rounds')),
         pierce: weapon.pierce + rank(player, 'piercing-rounds') * 2 + rank(player, 'veilshot') * 2 + rank(player, 'rose-thorns') * 2
           + rank(player, 'ghost-rounds') * 2
           + (forcedCritical && player.awakened ? 1 : 0)
@@ -349,8 +349,12 @@ export class GameEngine {
         enemy: false,
         chain: weapon.chain + rank(player, 'static-link') * 2 + rank(player, 'ricochet-oath') * 2
           + (player.character === 'tempest' ? 1 : 0) + rank(player, 'stormchain') * 2,
-        burn: player.character === 'cinder' || rank(player, 'combustion') > 0,
-        color: critical ? '#fff2ad' : player.color,
+        burn: Boolean(weapon.alwaysBurn) || player.character === 'cinder' || rank(player, 'combustion') > 0,
+        color: critical ? '#fff2ad' : weapon.color ?? player.color,
+        blastRadius: weapon.blastRadius,
+        blastDamage: weapon.blastDamage ? weapon.blastDamage * (baseDamage / weapon.damage) * (critical ? criticalMultiplier : 1) : undefined,
+        homing: weapon.homing,
+        slowDuration: weapon.slowDuration,
       }
       this.snapshot.projectiles.push(projectile)
       this.projectileHits.set(projectile.id, new Set())
@@ -655,9 +659,17 @@ export class GameEngine {
   private updateProjectiles(dt: number) {
     for (const projectile of this.snapshot.projectiles) {
       projectile.life -= dt
+      if (!projectile.enemy && (projectile.homing ?? 0) > 0) this.steerHomingProjectile(projectile, dt)
       projectile.x += projectile.vx * dt
       projectile.y += projectile.vy * dt
-      if (projectile.life <= 0) continue
+      if (projectile.life <= 0) {
+        if (!projectile.enemy && (projectile.blastRadius ?? 0) > 0) {
+          const hits = this.projectileHits.get(projectile.id) ?? new Set<number>()
+          this.detonateProjectile(projectile, projectile.x, projectile.y, hits)
+          this.projectileHits.set(projectile.id, hits)
+        }
+        continue
+      }
       if (projectile.enemy) {
         for (const player of this.snapshot.players) {
           if (player.downed || player.eliminated) continue
@@ -679,10 +691,15 @@ export class GameEngine {
         if (projectile.burn && enemy.health > 0) { enemy.burn = 2.5; enemy.burnOwner = projectile.ownerId }
         const owner = this.snapshot.players.find((player) => player.id === projectile.ownerId)
         const frostRank = rank(owner, 'frostbite')
-        if (frostRank > 0) enemy.slow = 2
+        enemy.slow = Math.max(enemy.slow, projectile.slowDuration ?? 0, frostRank > 0 ? 2 : 0)
         if (projectile.chain > 0) this.arcDamage(enemy, projectile, hits)
-        projectile.pierce -= 1
-        if (projectile.pierce < 0) projectile.life = 0
+        if ((projectile.blastRadius ?? 0) > 0) {
+          this.detonateProjectile(projectile, enemy.x, enemy.y, hits)
+          projectile.life = 0
+        } else {
+          projectile.pierce -= 1
+          if (projectile.pierce < 0) projectile.life = 0
+        }
         break
       }
       this.projectileHits.set(projectile.id, hits)
@@ -690,6 +707,33 @@ export class GameEngine {
     for (const projectile of this.snapshot.projectiles) if (projectile.life <= 0) this.projectileHits.delete(projectile.id)
     this.snapshot.projectiles = this.snapshot.projectiles.filter((projectile) => projectile.life > 0).slice(-560)
     this.snapshot.enemies = this.snapshot.enemies.filter((enemy) => enemy.health > 0)
+  }
+
+  private steerHomingProjectile(projectile: ProjectileState, dt: number) {
+    const target = this.nearestEnemy(projectile.x, projectile.y, 720)
+    if (!target) return
+    const speed = Math.hypot(projectile.vx, projectile.vy)
+    const current = Math.atan2(projectile.vy, projectile.vx)
+    const desired = Math.atan2(target.y - projectile.y, target.x - projectile.x)
+    const difference = Math.atan2(Math.sin(desired - current), Math.cos(desired - current))
+    const next = current + clamp(difference, -(projectile.homing ?? 0) * dt, (projectile.homing ?? 0) * dt)
+    projectile.vx = Math.cos(next) * speed
+    projectile.vy = Math.sin(next) * speed
+  }
+
+  private detonateProjectile(projectile: ProjectileState, x: number, y: number, alreadyHit: Set<number>) {
+    const radius = projectile.blastRadius ?? 0
+    const damage = projectile.blastDamage ?? 0
+    projectile.blastRadius = 0
+    if (radius <= 0 || damage <= 0) return
+    this.pushEvent('hit', x, y)
+    for (const enemy of [...this.snapshot.enemies]) {
+      if (enemy.health <= 0 || alreadyHit.has(enemy.id) || distanceSquared(x, y, enemy.x, enemy.y) > radius * radius) continue
+      alreadyHit.add(enemy.id)
+      this.damageEnemy(enemy, damage, projectile.ownerId)
+      if (projectile.burn && enemy.health > 0) { enemy.burn = 2.5; enemy.burnOwner = projectile.ownerId }
+      if ((projectile.slowDuration ?? 0) > 0) enemy.slow = Math.max(enemy.slow, projectile.slowDuration ?? 0)
+    }
   }
 
   private arcDamage(origin: EnemyState, projectile: ProjectileState, alreadyHit: Set<number>) {
