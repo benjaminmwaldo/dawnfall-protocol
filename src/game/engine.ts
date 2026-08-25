@@ -29,6 +29,9 @@ const distanceSquared = (ax: number, ay: number, bx: number, by: number) => {
 }
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 const rank = (player: PlayerState | undefined, id: string) => player?.perks[id] ?? 0
+const xpRequiredForLevel = (level: number, partySize: number) => Math.floor(
+  75 * Math.pow(1.22, Math.max(0, level - 1)) * (1 + Math.max(0, partySize - 1) * 0.42),
+)
 
 export class GameEngine {
   readonly snapshot: GameSnapshot
@@ -46,7 +49,7 @@ export class GameEngine {
       phase: 'playing',
       timeRemaining: duration,
       duration,
-      players: configs.map((config, index) => this.createPlayer(config, index)),
+      players: configs.map((config, index) => this.createPlayer(config, index, configs.length)),
       enemies: [],
       projectiles: [],
       pickups: [],
@@ -63,7 +66,10 @@ export class GameEngine {
     if (this.snapshot.phase === 'upgrade') {
       if (this.snapshot.upgrade) {
         this.snapshot.upgrade.expiresIn -= delta
-        if (this.snapshot.upgrade.expiresIn <= 0) this.chooseUpgrade(this.snapshot.upgrade.ids[0], this.snapshot.upgrade.chooserId)
+        if (this.snapshot.upgrade.expiresIn <= 0) {
+          const pending = this.snapshot.upgrade.offers.filter((offer) => !offer.selectedId)
+          for (const offer of pending) this.chooseUpgrade(offer.ids[0], offer.chooserId)
+        }
       }
       return this.snapshot
     }
@@ -93,9 +99,10 @@ export class GameEngine {
   }
 
   chooseUpgrade(upgradeId: string, chooserId: string): boolean {
-    const offer = this.snapshot.upgrade
+    const draft = this.snapshot.upgrade
+    const offer = draft?.offers.find((entry) => entry.chooserId === chooserId)
     const player = this.snapshot.players.find((entry) => entry.id === chooserId)
-    if (!offer || !player || this.snapshot.phase !== 'upgrade' || offer.chooserId !== chooserId || !offer.ids.includes(upgradeId)) return false
+    if (!draft || !offer || offer.selectedId || !player || this.snapshot.phase !== 'upgrade' || !offer.ids.includes(upgradeId)) return false
     const definition = upgradeById(upgradeId)
     if (definition.character && definition.character !== player.character) return false
 
@@ -108,16 +115,26 @@ export class GameEngine {
     if (upgradeId === 'deep-mag') this.addMagazine(player, 0.25)
     if (upgradeId === 'charged-mag') this.addMagazine(player, 0.2)
 
-    player.xp = Math.max(0, player.xp - player.xpToNext)
-    player.level += 1
-    player.xpToNext = Math.floor(26 * Math.pow(1.24, player.level - 1))
-    this.snapshot.upgrade = undefined
-    this.snapshot.phase = 'playing'
-    this.pushEvent('level', player.x, player.y, `${player.name.toUpperCase()} CLAIMED ${definition.name.toUpperCase()}`)
+    offer.selectedId = upgradeId
+    this.pushEvent('level', player.x, player.y, `${player.name.toUpperCase()} LOCKED ${definition.name.toUpperCase()}`)
+
+    if (draft.offers.every((entry) => entry.selectedId)) {
+      const requirement = this.snapshot.players[0]?.xpToNext ?? xpRequiredForLevel(draft.level, this.snapshot.players.length)
+      const nextLevel = draft.level + 1
+      const nextRequirement = xpRequiredForLevel(nextLevel, this.snapshot.players.length)
+      for (const squadmate of this.snapshot.players) {
+        squadmate.xp = Math.max(0, squadmate.xp - requirement)
+        squadmate.level = nextLevel
+        squadmate.xpToNext = nextRequirement
+      }
+      this.snapshot.upgrade = undefined
+      this.snapshot.phase = 'playing'
+      this.pushEvent('level', undefined, undefined, `SQUAD LEVEL ${nextLevel} · EVERY BUILD ADVANCED`)
+    }
     return true
   }
 
-  private createPlayer(config: PlayerConfig, index: number): PlayerState {
+  private createPlayer(config: PlayerConfig, index: number, partySize: number): PlayerState {
     const weapon = weaponById(config.weapon)
     const maxHealth = config.character === 'bastion' ? 125 : config.character === 'warden' ? 110 : config.character === 'briar' ? 115 : config.character === 'seraph' ? 105 : 100
     const angle = (Math.PI * 2 * index) / Math.max(1, 4)
@@ -148,7 +165,7 @@ export class GameEngine {
       hasteRemaining: 0,
       level: 1,
       xp: 0,
-      xpToNext: 26,
+      xpToNext: xpRequiredForLevel(1, partySize),
       perks: {},
     }
   }
@@ -588,7 +605,8 @@ export class GameEngine {
         }
         if (distance < 22) {
           const multiplier = 1 + rank(player, 'scavenger') * 0.15 + rank(player, 'red-harvest') * 0.2
-          player.xp += Math.max(1, Math.round(pickup.value * multiplier))
+          const sharedXp = Math.max(1, Math.round(pickup.value * multiplier))
+          for (const squadmate of this.snapshot.players) squadmate.xp += sharedXp
           if (rank(player, 'red-harvest') > 0) this.heal(player, rank(player, 'red-harvest') * 0.35)
           pickup.value = 0
           break
@@ -622,10 +640,21 @@ export class GameEngine {
 
   private checkLevelUp() {
     if (this.snapshot.phase !== 'playing') return
-    const chooser = this.snapshot.players.find((player) => !player.eliminated && player.xp >= player.xpToNext)
-    if (!chooser) return
-    const signaturePool = UPGRADES.filter((upgrade) => upgrade.character === chooser.character && rank(chooser, upgrade.id) < upgrade.maxLevel)
-    const commonPool = UPGRADES.filter((upgrade) => upgrade.category === 'common' && rank(chooser, upgrade.id) < upgrade.maxLevel)
+    const leader = this.snapshot.players[0]
+    if (!leader || leader.xp < leader.xpToNext) return
+    const offers = this.snapshot.players
+      .filter((player) => !player.eliminated)
+      .map((player) => ({ chooserId: player.id, ids: this.createUpgradeChoices(player) }))
+      .filter((offer) => offer.ids.length > 0)
+    if (offers.length === 0) return
+    this.snapshot.upgrade = { level: leader.level, offers, expiresIn: 20 }
+    this.snapshot.phase = 'upgrade'
+    this.pushEvent('level', undefined, undefined, `SQUAD LEVEL READY · ${offers.length} BUILDS ARE BRANCHING`)
+  }
+
+  private createUpgradeChoices(player: PlayerState): string[] {
+    const signaturePool = UPGRADES.filter((upgrade) => upgrade.character === player.character && rank(player, upgrade.id) < upgrade.maxLevel)
+    const commonPool = UPGRADES.filter((upgrade) => upgrade.category === 'common' && rank(player, upgrade.id) < upgrade.maxLevel)
     const allPool = [...signaturePool, ...commonPool]
     const choices: string[] = []
     const takeUnique = (pool: typeof UPGRADES) => {
@@ -637,10 +666,7 @@ export class GameEngine {
     }
     takeUnique(signaturePool)
     while (choices.length < 3 && choices.length < allPool.length) takeUnique(choices.length === 1 && commonPool.length > 0 ? commonPool : allPool)
-    if (choices.length === 0) return
-    this.snapshot.upgrade = { ids: choices, chooserId: chooser.id, expiresIn: 15 }
-    this.snapshot.phase = 'upgrade'
-    this.pushEvent('level', chooser.x, chooser.y, `${chooser.name.toUpperCase()} IS SHAPING HER OWN BUILD`)
+    return choices
   }
 
   private rewardBoss(type: BossType) {

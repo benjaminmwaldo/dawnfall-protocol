@@ -118,9 +118,15 @@ export interface GameEvent {
 }
 
 export interface UpgradeOffer {
-  ids: string[]
-  chooserId: string
+  level: number
   expiresIn: number
+  offers: PlayerUpgradeOffer[]
+}
+
+export interface PlayerUpgradeOffer {
+  chooserId: string
+  ids: string[]
+  selectedId?: string
 }
 
 export interface GameSnapshot {

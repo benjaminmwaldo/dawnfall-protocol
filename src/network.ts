@@ -21,6 +21,7 @@ export interface NetworkCallbacks {
 }
 
 const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+const SNAPSHOT_BUFFER_LIMIT = 512 * 1024
 const createCode = () => Array.from({ length: 6 }, () => ROOM_ALPHABET[Math.floor(Math.random() * ROOM_ALPHABET.length)]).join('')
 const peerIdForRoom = (code: string) => `dawnfall-${code.trim().toLowerCase()}`
 
@@ -108,7 +109,13 @@ export class MultiplayerSession {
   }
 
   broadcastSnapshot(snapshot: GameSnapshot) {
-    if (this.isHost) this.broadcast({ type: 'snapshot', snapshot })
+    if (!this.isHost) return
+    const message = { type: 'snapshot', snapshot } satisfies NetworkMessage
+    for (const connection of this.guestConnections.values()) {
+      // Snapshots are disposable authoritative frames. Never put a newer world
+      // state behind stale frames on a slower guest connection.
+      if (connection.open && this.snapshotQueueIsClear(connection)) connection.send(message)
+    }
   }
 
   close() {
@@ -181,10 +188,13 @@ export class MultiplayerSession {
   }
 
   private broadcast(message: NetworkMessage) {
-    for (const connection of this.guestConnections.values()) {
-      const queuedBytes = (connection as unknown as { bufferSize?: number }).bufferSize ?? 0
-      if (connection.open && queuedBytes < 2_000_000) connection.send(message)
-    }
+    for (const connection of this.guestConnections.values()) if (connection.open) connection.send(message)
+  }
+
+  private snapshotQueueIsClear(connection: DataConnection): boolean {
+    const queuedMessages = (connection as unknown as { bufferSize?: number }).bufferSize ?? 0
+    const bufferedBytes = (connection as unknown as { dataChannel?: RTCDataChannel }).dataChannel?.bufferedAmount ?? 0
+    return queuedMessages === 0 && bufferedBytes < SNAPSHOT_BUFFER_LIMIT
   }
 
   private waitForPeerOpen(peer: Peer): Promise<string> {

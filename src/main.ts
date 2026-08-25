@@ -88,6 +88,8 @@ class DawnfallApp {
   private lastHud = 0
   private lastBroadcast = 0
   private lastInputSend = 0
+  private lastSnapshotAt = performance.now()
+  private lastSentInput?: InputState
   private lastHandledEvent = 0
   private finishQueued = false
   private spectatingId?: string
@@ -111,7 +113,10 @@ class DawnfallApp {
         if (this.screen === 'lobby') this.renderLobby()
       },
       onStart: (configs, duration, seed) => this.beginGuestGame(configs, duration, seed),
-      onSnapshot: (snapshot) => { this.snapshot = snapshot },
+      onSnapshot: (snapshot) => {
+        this.snapshot = snapshot
+        this.lastSnapshotAt = performance.now()
+      },
       onGuestInput: (playerId, input) => this.inputs.set(playerId, input),
       onUpgrade: (playerId, upgradeId) => this.engine?.chooseUpgrade(upgradeId, playerId),
       onNotice: (text) => this.showNotice(text),
@@ -160,7 +165,7 @@ class DawnfallApp {
         </section>
         <section class="principles" aria-label="Core game mechanics">
           <article><b>01</b><span>ACTIVE COMBAT</span><p>WASD to move. Mouse to aim and fire. Ammunition and reload timing matter.</p></article>
-          <article><b>02</b><span>PERSONAL BUILDS</span><p>Collect your own shards and draft common or hunter-exclusive upgrades.</p></article>
+          <article><b>02</b><span>SQUAD LEVELS</span><p>Every shard fills one shared level. All hunters draft personal upgrades together.</p></article>
           <article><b>03</b><span>BOSS RELICS</span><p>Slay four night lords to earn the only powers shared by the entire squad.</p></article>
         </section>
         <footer class="landing-footer"><span>ORIGINAL BROWSER PROTOTYPE · DESKTOP RECOMMENDED</span><span>NOT AFFILIATED WITH 20 MINUTES TILL DAWN</span></footer>
@@ -170,7 +175,7 @@ class DawnfallApp {
         <p class="eyebrow">DESIGN DNA</p>
         <h2>What came from the research</h2>
         <p><em>20 Minutes Till Dawn</em> stands apart from passive survivor-likes through directional aiming, active firing, magazines, reloads, character–weapon pairing, upgrade trees, and boss-granted power spikes.</p>
-        <p>Dawnfall keeps that active tension while giving every hunter her own XP, upgrade draft, signature tree, and combat identity. Rescue play and fixed structures encourage regrouping; boss relics create the rare squad-wide power spike.</p>
+        <p>Dawnfall keeps that active tension while giving the squad one shared XP track. Every level pauses the night for simultaneous personal drafts, so each hunter keeps her own signature tree and combat identity while advancing with the team. Rescue play and fixed structures encourage regrouping; boss relics create the rare squad-wide power spike.</p>
         <div class="dialog-rule"></div>
         <p class="small-copy">This prototype uses original names, code, balancing, visual language, characters, enemies, abilities, and hand-directed generated artwork.</p>
       </dialog>
@@ -322,6 +327,7 @@ class DawnfallApp {
   private beginGuestGame(configs: PlayerConfig[], duration: number, seed: number) {
     this.engine = undefined
     this.snapshot = new GameEngine(configs, duration, seed).snapshot
+    this.lastSnapshotAt = performance.now()
     this.renderGame()
   }
 
@@ -362,6 +368,7 @@ class DawnfallApp {
     this.lastHud = 0
     this.lastBroadcast = 0
     this.lastInputSend = 0
+    this.lastSentInput = undefined
     this.animationFrame = requestAnimationFrame((time) => this.gameLoop(time))
   }
 
@@ -401,18 +408,25 @@ class DawnfallApp {
 
     if (this.mode !== 'guest' && this.engine) {
       this.snapshot = this.engine.step(dt, this.inputs)
-      if (this.mode === 'host' && time - this.lastBroadcast > 70) {
+      if (this.mode === 'host' && time - this.lastBroadcast > 100) {
         this.network.broadcastSnapshot(this.snapshot)
         this.lastBroadcast = time
       }
-    } else if (this.mode === 'guest' && time - this.lastInputSend > 45) {
-      this.network.sendInput(this.localConfig.id, { ...this.localInput })
-      this.lastInputSend = time
+    } else if (this.mode === 'guest') {
+      const inputChanged = this.inputChanged(this.localInput, this.lastSentInput)
+      const sendInterval = inputChanged ? 24 : 160
+      if (time - this.lastInputSend > sendInterval) {
+        const input = { ...this.localInput }
+        this.network.sendInput(this.localConfig.id, input)
+        this.lastSentInput = input
+        this.lastInputSend = time
+      }
     }
 
     if (this.snapshot) {
       const focusPlayerId = this.resolveFocusPlayerId(this.snapshot)
-      this.renderer?.render(this.snapshot, this.localConfig.id, focusPlayerId)
+      const prediction = this.mode === 'guest' ? Math.min(0.12, Math.max(0, (time - this.lastSnapshotAt) / 1000)) : 0
+      this.renderer?.render(this.snapshot, this.localConfig.id, focusPlayerId, prediction)
       if (time - this.lastHud > 80) {
         this.updateHud(this.snapshot)
         this.lastHud = time
@@ -424,6 +438,14 @@ class DawnfallApp {
       }
     }
     this.animationFrame = requestAnimationFrame((nextTime) => this.gameLoop(nextTime))
+  }
+
+  private inputChanged(next: InputState, previous?: InputState): boolean {
+    if (!previous) return true
+    if (next.up !== previous.up || next.down !== previous.down || next.left !== previous.left || next.right !== previous.right
+      || next.firing !== previous.firing || next.interact !== previous.interact) return true
+    const aimDifference = Math.abs(Math.atan2(Math.sin(next.aim - previous.aim), Math.cos(next.aim - previous.aim)))
+    return aimDifference > 0.015
   }
 
   private resolveFocusPlayerId(snapshot: GameSnapshot): string {
@@ -499,10 +521,16 @@ class DawnfallApp {
     const overlay = document.querySelector<HTMLElement>('#upgrade-overlay')
     if (!overlay) return
     const offer = snapshot.upgrade
-    if (!offer || snapshot.phase !== 'upgrade') { overlay.innerHTML = ''; overlay.classList.remove('visible'); return }
-    const chooser = snapshot.players.find((player) => player.id === offer.chooserId)
-    const localChooses = offer.chooserId === this.localConfig.id
-    const offerKey = `${offer.chooserId}-${offer.ids.join('-')}`
+    if (!offer || snapshot.phase !== 'upgrade') {
+      overlay.innerHTML = ''
+      overlay.classList.remove('visible')
+      delete overlay.dataset.offer
+      return
+    }
+    const localPlayer = snapshot.players.find((player) => player.id === this.localConfig.id)
+    const localOffer = offer.offers.find((entry) => entry.chooserId === this.localConfig.id)
+    const localChooses = Boolean(localOffer && !localOffer.selectedId)
+    const offerKey = `${offer.level}-${offer.offers.map((entry) => `${entry.chooserId}:${entry.ids.join('.')}:${entry.selectedId ?? ''}`).join('|')}`
     if (overlay.dataset.offer === offerKey) {
       const countdown = overlay.querySelector('[data-countdown]')
       if (countdown) countdown.textContent = Math.ceil(offer.expiresIn).toString()
@@ -513,16 +541,22 @@ class DawnfallApp {
     overlay.innerHTML = `
       <div class="upgrade-backdrop"></div>
       <section class="upgrade-draft">
-        <p class="eyebrow">${escapeHtml(chooser?.name.toUpperCase() ?? 'HUNTER')} · PERSONAL LEVEL ${(chooser?.level ?? 1) + 1}</p>
-        <h2>${localChooses ? 'SHAPE YOUR HUNTER' : `${escapeHtml(chooser?.name ?? 'A hunter')} IS CHOOSING`}</h2>
-        <p>${localChooses ? 'This upgrade belongs only to your build.' : 'The night is paused while her build branches.'} Auto-pick in <b data-countdown>${Math.ceil(offer.expiresIn)}</b>s.</p>
-        <div class="upgrade-cards">
-          ${offer.ids.map((id) => {
-            const upgrade = upgradeById(id)
-            const nextRank = (chooser?.perks[id] ?? 0) + 1
-            return `<button class="upgrade-card ${upgrade.category}" data-upgrade="${id}" style="--accent:${upgrade.accent}" ${localChooses ? '' : 'disabled'}>${perkIconMarkup(id, 'upgrade-art')}<small>${upgrade.category === 'signature' ? `${characterById(upgrade.character!).name.toUpperCase()} SIGNATURE · ` : ''}RANK ${nextRank}/${upgrade.maxLevel}</small><strong>${upgrade.name}</strong><em>${upgrade.description}</em><b>TAKE PERK →</b></button>`
+        <p class="eyebrow">SQUAD LEVEL ${offer.level + 1} · PARALLEL DRAFT</p>
+        <h2>${localChooses ? 'SHAPE YOUR HUNTER' : localOffer?.selectedId ? 'YOUR UPGRADE IS LOCKED' : 'THE SQUAD IS CHOOSING'}</h2>
+        <p>Every active hunter gets a personal perk. Combat resumes when everyone locks a choice. Auto-lock in <b data-countdown>${Math.ceil(offer.expiresIn)}</b>s.</p>
+        <div class="upgrade-status">
+          ${offer.offers.map((entry) => {
+            const player = snapshot.players.find((candidate) => candidate.id === entry.chooserId)
+            return `<div class="${entry.selectedId ? 'ready' : ''}"><span style="--player:${player?.color ?? '#f2d479'};${portraitStyle(player?.character ?? 'vesper')}"></span><b>${escapeHtml(player?.name ?? 'Hunter')}</b><small>${entry.selectedId ? 'LOCKED' : 'CHOOSING'}</small></div>`
           }).join('')}
         </div>
+        ${localChooses && localOffer ? `<div class="upgrade-cards">
+          ${localOffer.ids.map((id) => {
+            const upgrade = upgradeById(id)
+            const nextRank = (localPlayer?.perks[id] ?? 0) + 1
+            return `<button class="upgrade-card ${upgrade.category}" data-upgrade="${id}" style="--accent:${upgrade.accent}">${perkIconMarkup(id, 'upgrade-art')}<small>${upgrade.category === 'signature' ? `${characterById(upgrade.character!).name.toUpperCase()} SIGNATURE · ` : ''}RANK ${nextRank}/${upgrade.maxLevel}</small><strong>${upgrade.name}</strong><em>${upgrade.description}</em><b>LOCK CHOICE →</b></button>`
+          }).join('')}
+        </div>` : `<div class="upgrade-waiting"><span class="waiting-pulse"></span><strong>${localOffer?.selectedId ? escapeHtml(upgradeById(localOffer.selectedId).name.toUpperCase()) : 'WAITING FOR ACTIVE HUNTERS'}</strong><small>${localOffer?.selectedId ? 'Your build is ready. The night resumes after the remaining choices.' : 'Spectating this squad draft.'}</small></div>`}
       </section>`
     overlay.querySelectorAll<HTMLElement>('[data-upgrade]').forEach((button) => button.addEventListener('click', () => {
       const upgradeId = button.dataset.upgrade

@@ -32,21 +32,60 @@ describe('GameEngine', () => {
     expect(engine.snapshot.players[0].ammo).toBeLessThanOrEqual(engine.snapshot.players[0].maxAmmo)
   })
 
-  it('pauses for a personal upgrade and applies it only to the collecting hunter', () => {
+  it('levels the squad together after every active hunter locks a personal upgrade', () => {
     const ally = { ...player, id: 'ally', name: 'Ally', character: 'warden' as const, color: '#74d8c2' }
     const engine = new GameEngine([player, ally], 240, 99)
-    engine.snapshot.players[0].xp = engine.snapshot.players[0].xpToNext
+    for (const squadmate of engine.snapshot.players) squadmate.xp = squadmate.xpToNext
     engine.step(1 / 60, new Map([[player.id, idle], [ally.id, idle]]))
     expect(engine.snapshot.phase).toBe('upgrade')
-    const offer = engine.snapshot.upgrade
-    expect(offer?.ids).toHaveLength(3)
-    expect(offer?.chooserId).toBe(player.id)
-    expect(engine.chooseUpgrade(offer!.ids[0], offer!.chooserId)).toBe(true)
+    const draft = engine.snapshot.upgrade
+    expect(draft?.offers).toHaveLength(2)
+    expect(draft?.offers.every((offer) => offer.ids.length === 3)).toBe(true)
+    const playerOffer = draft!.offers.find((offer) => offer.chooserId === player.id)!
+    const allyOffer = draft!.offers.find((offer) => offer.chooserId === ally.id)!
+    expect(engine.chooseUpgrade(playerOffer.ids[0], player.id)).toBe(true)
+    expect(engine.snapshot.phase).toBe('upgrade')
+    expect(engine.snapshot.players.every((squadmate) => squadmate.level === 1)).toBe(true)
+    expect(engine.chooseUpgrade(allyOffer.ids[0], ally.id)).toBe(true)
     expect(engine.snapshot.phase).toBe('playing')
-    expect(engine.snapshot.players[0].perks[offer!.ids[0]]).toBe(1)
-    expect(engine.snapshot.players[1].perks[offer!.ids[0]]).toBeUndefined()
-    expect(engine.snapshot.players[0].level).toBe(2)
-    expect(engine.snapshot.players[1].level).toBe(1)
+    expect(engine.snapshot.players[0].perks[playerOffer.ids[0]]).toBe(1)
+    expect(engine.snapshot.players[1].perks[allyOffer.ids[0]]).toBe(1)
+    expect(engine.snapshot.players.every((squadmate) => squadmate.level === 2)).toBe(true)
+    expect(engine.snapshot.players[0].xp).toBe(engine.snapshot.players[1].xp)
+  })
+
+  it('starts with a slower shared upgrade cadence that scales with party size', () => {
+    const solo = new GameEngine([player], 240, 11)
+    const ally = { ...player, id: 'ally', name: 'Ally', character: 'warden' as const }
+    const duo = new GameEngine([player, ally], 240, 11)
+    expect(solo.snapshot.players[0].xpToNext).toBeGreaterThanOrEqual(75)
+    expect(duo.snapshot.players[0].xpToNext).toBeGreaterThan(solo.snapshot.players[0].xpToNext)
+    expect(duo.snapshot.players[0].xpToNext).toBe(duo.snapshot.players[1].xpToNext)
+  })
+
+  it('adds every collected soul shard to the whole squad XP track', () => {
+    const ally = { ...player, id: 'ally', name: 'Ally', character: 'warden' as const }
+    const engine = new GameEngine([player, ally], 240, 12)
+    engine.snapshot.pickups.push({
+      id: 90_001,
+      x: engine.snapshot.players[0].x,
+      y: engine.snapshot.players[0].y,
+      value: 10,
+    })
+    engine.step(1 / 60, new Map([[player.id, idle], [ally.id, idle]]))
+    expect(engine.snapshot.players[0].xp).toBe(10)
+    expect(engine.snapshot.players[1].xp).toBe(10)
+  })
+
+  it('auto-locks every remaining squad choice when the draft timer expires', () => {
+    const ally = { ...player, id: 'ally', name: 'Ally', character: 'warden' as const }
+    const engine = new GameEngine([player, ally], 240, 15)
+    for (const squadmate of engine.snapshot.players) squadmate.xp = squadmate.xpToNext
+    engine.step(1 / 60, new Map([[player.id, idle], [ally.id, idle]]))
+    for (let tick = 0; tick < 410; tick += 1) engine.step(0.05, new Map([[player.id, idle], [ally.id, idle]]))
+    expect(engine.snapshot.phase).toBe('playing')
+    expect(engine.snapshot.players.every((squadmate) => squadmate.level === 2)).toBe(true)
+    expect(engine.snapshot.players.every((squadmate) => Object.keys(squadmate.perks).length === 1)).toBe(true)
   })
 
   it('always offers at least one signature upgrade for that hunter while available', () => {
@@ -54,7 +93,7 @@ describe('GameEngine', () => {
     engine.snapshot.players[0].xp = engine.snapshot.players[0].xpToNext
     engine.step(1 / 60, new Map([[player.id, idle]]))
     const signatureIds = new Set(['stormchain', 'thunderhead', 'charged-mag', 'ball-lightning'])
-    expect(engine.snapshot.upgrade?.ids.some((id) => signatureIds.has(id))).toBe(true)
+    expect(engine.snapshot.upgrade?.offers[0].ids.some((id) => signatureIds.has(id))).toBe(true)
   })
 
   it('fires slower, readable enemy projectiles', () => {

@@ -66,14 +66,15 @@ export class GameRenderer {
     this.context.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
   }
 
-  render(snapshot: GameSnapshot, localPlayerId: string, focusPlayerId = localPlayerId) {
+  render(snapshot: GameSnapshot, localPlayerId: string, focusPlayerId = localPlayerId, predictionSeconds = 0) {
     const now = performance.now()
     const dt = Math.min(0.05, (now - this.lastFrame) / 1000)
     this.lastFrame = now
     const focus = snapshot.players.find((player) => player.id === focusPlayerId) ?? snapshot.players.find((player) => player.id === localPlayerId) ?? snapshot.players[0]
     if (focus) {
-      this.cameraX += (focus.x - this.cameraX) * Math.min(1, dt * 10)
-      this.cameraY += (focus.y - this.cameraY) * Math.min(1, dt * 10)
+      const prediction = focus.downed ? 0 : predictionSeconds
+      this.cameraX += (focus.x + focus.vx * prediction - this.cameraX) * Math.min(1, dt * 10)
+      this.cameraY += (focus.y + focus.vy * prediction - this.cameraY) * Math.min(1, dt * 10)
     }
 
     this.captureEffects(snapshot.events)
@@ -85,9 +86,9 @@ export class GameRenderer {
     this.drawTerrainDetails()
     this.drawStructures(snapshot.structures)
     this.drawPickups(snapshot)
-    this.drawProjectiles(snapshot)
-    this.drawEnemies(snapshot.enemies)
-    this.drawPlayers(snapshot.players, localPlayerId)
+    this.drawProjectiles(snapshot, predictionSeconds)
+    this.drawEnemies(snapshot.enemies, predictionSeconds)
+    this.drawPlayers(snapshot.players, localPlayerId, predictionSeconds)
     this.drawEffects(dt)
     context.restore()
     this.drawVignette()
@@ -240,27 +241,31 @@ export class GameRenderer {
     }
   }
 
-  private drawProjectiles(snapshot: GameSnapshot) {
+  private drawProjectiles(snapshot: GameSnapshot, predictionSeconds: number) {
     const context = this.context
     context.lineCap = 'round'
     for (const projectile of snapshot.projectiles) {
+      const x = projectile.x + projectile.vx * predictionSeconds
+      const y = projectile.y + projectile.vy * predictionSeconds
       context.strokeStyle = projectile.color
       context.lineWidth = projectile.radius * 1.5
       context.globalAlpha = projectile.enemy ? 0.8 : 0.95
       context.shadowColor = projectile.color
       context.shadowBlur = projectile.enemy ? 9 : 13
       context.beginPath()
-      context.moveTo(projectile.x, projectile.y)
-      context.lineTo(projectile.x - projectile.vx * 0.035, projectile.y - projectile.vy * 0.035)
+      context.moveTo(x, y)
+      context.lineTo(x - projectile.vx * 0.035, y - projectile.vy * 0.035)
       context.stroke()
     }
     context.shadowBlur = 0
     context.globalAlpha = 1
   }
 
-  private drawEnemies(enemies: EnemyState[]) {
+  private drawEnemies(enemies: EnemyState[], predictionSeconds: number) {
     const context = this.context
     for (const enemy of enemies) {
+      const x = enemy.x + enemy.vx * predictionSeconds
+      const y = enemy.y + enemy.vy * predictionSeconds
       const burning = enemy.burn > 0
       const color = burning ? '#ff735c' : enemy.slow > 0 ? '#9bd6ff' : '#e8eee7'
       if (this.enemySpriteAtlas.complete && this.enemySpriteAtlas.naturalWidth > 0) {
@@ -276,7 +281,7 @@ export class GameRenderer {
         context.save()
         context.fillStyle = 'rgba(0, 0, 0, .46)'
         context.beginPath()
-        context.ellipse(enemy.x, enemy.y + enemy.radius * 0.72, size * 0.28, size * 0.12, 0, 0, TAU)
+        context.ellipse(x, y + enemy.radius * 0.72, size * 0.28, size * 0.12, 0, 0, TAU)
         context.fill()
         context.shadowColor = burning ? '#ff593d' : enemy.slow > 0 ? '#82ceff' : boss ? '#ef375e' : 'rgba(0,0,0,0)'
         context.shadowBlur = burning || enemy.slow > 0 ? 20 : boss ? 16 : 0
@@ -285,8 +290,8 @@ export class GameRenderer {
           4,
           3,
           ENEMY_SPRITE_INDEX[enemy.type],
-          enemy.x,
-          enemy.y - bob,
+          x,
+          y - bob,
           size * (1 - stride * 0.016 * motion),
           size * (1 + stride * 0.022 * motion),
           transform.rotation,
@@ -298,17 +303,17 @@ export class GameRenderer {
           context.strokeStyle = `rgba(239, 113, 142, ${0.28 + Math.sin(enemy.phase * 2) * 0.08})`
           context.lineWidth = 2
           context.beginPath()
-          context.arc(enemy.x, enemy.y, 69 + Math.sin(enemy.phase * 2) * 4, 0, TAU)
+          context.arc(x, y, 69 + Math.sin(enemy.phase * 2) * 4, 0, TAU)
           context.stroke()
         }
         if (boss || (enemy.type === 'bulwark' && enemy.maxHealth > 500)) {
           const barWidth = boss ? 130 : 92
-          this.drawBar(enemy.x - barWidth / 2, enemy.y - size * 0.47, barWidth, 5, enemy.health / enemy.maxHealth, '#ef718e')
+          this.drawBar(x - barWidth / 2, y - size * 0.47, barWidth, 5, enemy.health / enemy.maxHealth, '#ef718e')
         }
         continue
       }
       context.save()
-      context.translate(enemy.x, enemy.y)
+      context.translate(x, y)
       context.rotate(Math.atan2(enemy.vy, enemy.vx) + Math.PI / 2)
       context.strokeStyle = color
       context.fillStyle = isBoss(enemy.type) ? 'rgba(105, 33, 62, .82)' : 'rgba(12, 22, 19, .9)'
@@ -358,22 +363,25 @@ export class GameRenderer {
       context.restore()
 
       if (isBoss(enemy.type) || (enemy.type === 'bulwark' && enemy.maxHealth > 500)) {
-        this.drawBar(enemy.x - 42, enemy.y - enemy.radius - 14, 84, 5, enemy.health / enemy.maxHealth, '#ef718e')
+        this.drawBar(x - 42, y - enemy.radius - 14, 84, 5, enemy.health / enemy.maxHealth, '#ef718e')
       }
     }
   }
 
-  private drawPlayers(players: PlayerState[], localPlayerId: string) {
+  private drawPlayers(players: PlayerState[], localPlayerId: string, predictionSeconds: number) {
     const context = this.context
     for (const player of players) {
       if (player.eliminated) continue
+      const prediction = player.downed ? 0 : predictionSeconds
+      const x = player.x + player.vx * prediction
+      const y = player.y + player.vy * prediction
       if (player.character === 'bastion' && !player.downed) {
         const radius = player.awakened ? 300 : 150
         context.fillStyle = 'rgba(116, 216, 194, .025)'
         context.strokeStyle = 'rgba(116, 216, 194, .16)'
         context.lineWidth = 1
         context.beginPath()
-        context.arc(player.x, player.y, radius, 0, TAU)
+        context.arc(x, y, radius, 0, TAU)
         context.fill()
         context.stroke()
       }
@@ -386,12 +394,12 @@ export class GameRenderer {
         const stride = Math.sin(performance.now() / 86 + spriteIndex * 1.91)
         const bob = player.downed ? 0 : motion > 0.03 ? Math.abs(stride) * 2 : Math.sin(performance.now() / 340 + spriteIndex) * 0.45
         const recoil = player.fireCooldown > 0 && !player.downed ? Math.min(2.4, player.fireCooldown * 14) : 0
-        const spriteX = player.x - Math.cos(player.aim) * recoil
-        const spriteY = player.y - Math.sin(player.aim) * recoil - bob
+        const spriteX = x - Math.cos(player.aim) * recoil
+        const spriteY = y - Math.sin(player.aim) * recoil - bob
         context.save()
         context.fillStyle = 'rgba(0, 0, 0, .48)'
         context.beginPath()
-        context.ellipse(player.x, player.y + 18, 27, 10, 0, 0, TAU)
+        context.ellipse(x, y + 18, 27, 10, 0, 0, TAU)
         context.fill()
         if (local && !player.downed) {
           context.strokeStyle = player.color
@@ -399,12 +407,12 @@ export class GameRenderer {
           context.lineWidth = 1.5
           context.setLineDash([3, 5])
           context.beginPath()
-          context.arc(player.x, player.y, 31 + Math.sin(performance.now() / 180) * 2, 0, TAU)
+          context.arc(x, y, 31 + Math.sin(performance.now() / 180) * 2, 0, TAU)
           context.stroke()
           context.setLineDash([])
           context.beginPath()
-          context.moveTo(player.x + Math.cos(player.aim) * 22, player.y + Math.sin(player.aim) * 22)
-          context.lineTo(player.x + Math.cos(player.aim) * 44, player.y + Math.sin(player.aim) * 44)
+          context.moveTo(x + Math.cos(player.aim) * 22, y + Math.sin(player.aim) * 22)
+          context.lineTo(x + Math.cos(player.aim) * 44, y + Math.sin(player.aim) * 44)
           context.stroke()
         }
         context.globalAlpha = player.downed ? 0.48 : 1
@@ -429,20 +437,20 @@ export class GameRenderer {
           context.strokeStyle = '#ef718e'
           context.lineWidth = 2
           context.beginPath()
-          context.moveTo(player.x - 8, player.y - 8)
-          context.lineTo(player.x + 8, player.y + 8)
-          context.moveTo(player.x + 8, player.y - 8)
-          context.lineTo(player.x - 8, player.y + 8)
+          context.moveTo(x - 8, y - 8)
+          context.lineTo(x + 8, y + 8)
+          context.moveTo(x + 8, y - 8)
+          context.lineTo(x - 8, y + 8)
           context.stroke()
         }
-        this.drawBar(player.x - 24, player.y - size * 0.46, 48, 4, player.health / player.maxHealth, player.downed ? '#ef718e' : player.color)
-        if (player.downed) this.drawBar(player.x - 24, player.y - size * 0.39, 48, 3, player.reviveProgress / 2.2, '#f2d479')
-        this.drawLabel(player.x, player.y + size * 0.43, `${player.name}${player.awakened ? ' ✦' : ''}`, local ? '#f5f1de' : '#b8c4bd')
+        this.drawBar(x - 24, y - size * 0.46, 48, 4, player.health / player.maxHealth, player.downed ? '#ef718e' : player.color)
+        if (player.downed) this.drawBar(x - 24, y - size * 0.39, 48, 3, player.reviveProgress / 2.2, '#f2d479')
+        this.drawLabel(x, y + size * 0.43, `${player.name}${player.awakened ? ' ✦' : ''}`, local ? '#f5f1de' : '#b8c4bd')
         continue
       }
 
       context.save()
-      context.translate(player.x, player.y)
+      context.translate(x, y)
       if (player.downed) context.rotate(Math.sin(performance.now() / 120) * 0.05)
       context.fillStyle = player.downed ? 'rgba(55, 48, 48, .9)' : '#0b1512'
       context.strokeStyle = player.color
@@ -474,9 +482,9 @@ export class GameRenderer {
         context.stroke()
       }
       context.restore()
-      this.drawBar(player.x - 21, player.y - 27, 42, 4, player.health / player.maxHealth, player.downed ? '#ef718e' : player.color)
-      if (player.downed) this.drawBar(player.x - 21, player.y - 20, 42, 3, player.reviveProgress / 2.2, '#f2d479')
-      this.drawLabel(player.x, player.y + 31, `${player.name}${player.awakened ? ' ✦' : ''}`, player.id === localPlayerId ? '#f5f1de' : '#b8c4bd')
+      this.drawBar(x - 21, y - 27, 42, 4, player.health / player.maxHealth, player.downed ? '#ef718e' : player.color)
+      if (player.downed) this.drawBar(x - 21, y - 20, 42, 3, player.reviveProgress / 2.2, '#f2d479')
+      this.drawLabel(x, y + 31, `${player.name}${player.awakened ? ' ✦' : ''}`, player.id === localPlayerId ? '#f5f1de' : '#b8c4bd')
     }
   }
 
