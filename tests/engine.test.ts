@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { CHARACTERS, UPGRADES, WEAPONS } from '../src/game/data'
 import { GameEngine } from '../src/game/engine'
+import { MAPS, mapById } from '../src/game/maps'
 import { uprightSpriteTransform } from '../src/game/renderer'
 import type { InputState, PlayerConfig } from '../src/game/types'
 
@@ -380,6 +381,65 @@ describe('GameEngine', () => {
     engine.step(1 / 60, new Map([[ally.id, idle]]))
     expect(engine.snapshot.phase).toBe('playing')
     expect(engine.snapshot.players[1].eliminated).toBe(false)
+  })
+
+  it('ships three battlefields with distinct terrain and structure sets', () => {
+    expect(MAPS).toHaveLength(3)
+    expect(new Set(MAPS.map((map) => map.textureIndex)).size).toBe(3)
+    expect(new Set(MAPS.map((map) => map.structures.map((structure) => structure.type).join('|'))).size).toBe(3)
+    expect(mapById('reliquary').walls.length).toBeGreaterThanOrEqual(20)
+    for (const map of MAPS) expect(map.structures.map((structure) => structure.effect).sort()).toEqual(['haste', 'heal', 'turret'])
+  })
+
+  it('stops hunters at Reliquary walls instead of letting them phase through', () => {
+    const engine = new GameEngine([player], 240, 1_111, 'reliquary')
+    const hunter = engine.snapshot.players[0]
+    hunter.x = -540
+    hunter.y = -200
+    const movingRight = { ...idle, right: true }
+    for (let tick = 0; tick < 30; tick += 1) engine.step(0.05, new Map([[player.id, movingRight]]))
+    expect(hunter.x).toBeLessThanOrEqual(-497)
+    expect(hunter.y).toBeCloseTo(-200)
+  })
+
+  it('routes monsters through dungeon doors without intersecting solid masonry', () => {
+    const engine = new GameEngine([player], 240, 1_112, 'reliquary')
+    const hunter = engine.snapshot.players[0]
+    hunter.x = 0
+    hunter.y = 650
+    engine.snapshot.enemies.push({
+      id: 92_000, type: 'thrall', x: -900, y: -650, vx: 0, vy: 0, health: 500, maxHealth: 500,
+      radius: 13, speed: 210, damage: 0, attackCooldown: 9, burn: 0, burnTick: 0.5, slow: 0, phase: 0,
+    })
+    const walls = mapById('reliquary').walls
+    const intersectsWall = (x: number, y: number, radius: number) => walls.some((wall) => {
+      const closestX = Math.max(wall.x - wall.width / 2, Math.min(x, wall.x + wall.width / 2))
+      const closestY = Math.max(wall.y - wall.height / 2, Math.min(y, wall.y + wall.height / 2))
+      return Math.pow(x - closestX, 2) + Math.pow(y - closestY, 2) < radius * radius
+    })
+    for (let tick = 0; tick < 180; tick += 1) {
+      engine.step(0.05, new Map([[player.id, idle]]))
+      const monster = engine.snapshot.enemies.find((enemy) => enemy.id === 92_000)
+      if (!monster) break
+      expect(intersectsWall(monster.x, monster.y, monster.radius)).toBe(false)
+    }
+    const monster = engine.snapshot.enemies.find((enemy) => enemy.id === 92_000)
+    expect(monster).toBeDefined()
+    expect(monster!.x).toBeGreaterThan(-700)
+  })
+
+  it('lets dungeon walls absorb gunfire', () => {
+    const engine = new GameEngine([player], 240, 1_113, 'reliquary')
+    const hunter = engine.snapshot.players[0]
+    hunter.x = -540
+    hunter.y = -200
+    hunter.aim = 0
+    engine.step(0.05, new Map([[player.id, { ...idle, firing: true, aim: 0 }]]))
+    expect(engine.snapshot.projectiles).toHaveLength(0)
+
+    const openField = new GameEngine([player], 240, 1_113, 'gloamreach')
+    openField.step(0.05, new Map([[player.id, { ...idle, firing: true, aim: 0 }]]))
+    expect(openField.snapshot.projectiles).toHaveLength(1)
   })
 })
 

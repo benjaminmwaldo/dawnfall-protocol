@@ -1,4 +1,5 @@
 import { BOSS_NAMES, UPGRADES, isBoss, teamBuffByBoss, upgradeById, weaponById } from './data'
+import { mapById, type MapDefinition } from './maps'
 import { SeededRandom } from './random'
 import type {
   BossType,
@@ -8,6 +9,8 @@ import type {
   GameEvent,
   GameSnapshot,
   InputState,
+  MapId,
+  MapWall,
   PickupState,
   PlayerConfig,
   PlayerState,
@@ -64,11 +67,14 @@ export class GameEngine {
   private nextBossIndex = 0
   private finalEncounterStarted = false
   private readonly projectileHits = new Map<number, Set<number>>()
+  private readonly map: MapDefinition
 
-  constructor(configs: PlayerConfig[], duration: number, seed = Date.now()) {
+  constructor(configs: PlayerConfig[], duration: number, seed = Date.now(), mapId: MapId = 'gloamreach') {
     this.random = new SeededRandom(seed)
+    this.map = mapById(mapId)
     this.snapshot = {
       seed,
+      mapId: this.map.id,
       phase: 'playing',
       timeRemaining: duration,
       duration,
@@ -218,11 +224,7 @@ export class GameEngine {
   }
 
   private createStructures(): StructureState[] {
-    return [
-      { id: this.entityId++, type: 'moonwell', x: -330, y: 190, radius: 80, cooldown: 0 },
-      { id: this.entityId++, type: 'ward-tower', x: 360, y: -210, radius: 62, cooldown: 0.8 },
-      { id: this.entityId++, type: 'ritual-stone', x: 80, y: 430, radius: 76, cooldown: 0 },
-    ]
+    return this.map.structures.map((structure) => ({ ...structure, id: this.entityId++, cooldown: structure.effect === 'turret' ? 0.8 : 0 }))
   }
 
   private updatePlayers(dt: number, inputs: ReadonlyMap<string, InputState>) {
@@ -257,8 +259,7 @@ export class GameEngine {
       const speed = 176 * moveMultiplier
       player.vx = moveX * speed
       player.vy = moveY * speed
-      player.x = clamp(player.x + player.vx * dt, -1470, 1470)
-      player.y = clamp(player.y + player.vy * dt, -1470, 1470)
+      this.moveCircle(player, player.vx * dt, player.vy * dt, 11)
 
       if (player.reloadRemaining > 0) {
         player.reloadRemaining -= dt
@@ -284,7 +285,7 @@ export class GameEngine {
     if (player.fireCooldown > 0) return
     if (!weapon.infiniteAmmo && player.ammo <= 0) { this.startReload(player); return }
 
-    const ritualBoost = this.snapshot.structures.some((structure) => structure.type === 'ritual-stone' && distanceSquared(player.x, player.y, structure.x, structure.y) < structure.radius * structure.radius)
+    const ritualBoost = this.snapshot.structures.some((structure) => structure.effect === 'haste' && distanceSquared(player.x, player.y, structure.x, structure.y) < structure.radius * structure.radius)
     const emptyMagazineRatio = weapon.infiniteAmmo ? 0 : 1 - player.ammo / Math.max(1, player.maxAmmo)
     const burningNearby = player.character === 'cinder' && rank(player, 'ash-step') > 0 && this.snapshot.enemies.some((enemy) => enemy.burn > 0 && distanceSquared(player.x, player.y, enemy.x, enemy.y) < 260 * 260)
     const lastChamber = player.weapon === 'revolver' && rank(player, 'last-chamber') > 0 && player.ammo === 1
@@ -398,8 +399,7 @@ export class GameEngine {
       const desiredY = owner.y + Math.sin(orbit) * 40
       companion.vx = (desiredX - companion.x) * 7
       companion.vy = (desiredY - companion.y) * 7
-      companion.x += companion.vx * dt
-      companion.y += companion.vy * dt
+      this.moveCircle(companion, companion.vx * dt, companion.vy * dt, 8)
 
       const attack = COMPANION_ATTACKS[companion.kind]
       const target = this.nearestEnemy(companion.x, companion.y, attack.range)
@@ -427,19 +427,19 @@ export class GameEngine {
 
   private updateStructures(dt: number) {
     for (const structure of this.snapshot.structures) {
-      if (structure.type === 'moonwell') {
+      if (structure.effect === 'heal') {
         for (const player of this.snapshot.players) {
           if (!player.downed && !player.eliminated && distanceSquared(player.x, player.y, structure.x, structure.y) < structure.radius * structure.radius) player.health = Math.min(player.maxHealth, player.health + dt * 2.2)
         }
       }
-      if (structure.type === 'ward-tower') {
+      if (structure.effect === 'turret') {
         structure.cooldown -= dt
         if (structure.cooldown <= 0) {
           const target = this.nearestEnemy(structure.x, structure.y, 360)
           const owner = this.snapshot.players.find((player) => !player.eliminated)
-          if (target && owner) {
+          if (target && owner && this.hasLineOfSight(structure.x, structure.y, target.x, target.y)) {
             const angle = Math.atan2(target.y - structure.y, target.x - structure.x)
-            const projectile: ProjectileState = { id: this.entityId++, ownerId: owner.id, x: structure.x, y: structure.y, vx: Math.cos(angle) * 545, vy: Math.sin(angle) * 545, radius: 5.2, damage: 22, life: 0.9, pierce: 0, bounces: 0, enemy: false, chain: 0, burn: false, color: '#74d8c2' }
+            const projectile: ProjectileState = { id: this.entityId++, ownerId: owner.id, x: structure.x, y: structure.y, vx: Math.cos(angle) * 545, vy: Math.sin(angle) * 545, radius: 5.2, damage: 22, life: 0.9, pierce: 0, bounces: 0, enemy: false, chain: 0, burn: false, color: this.map.accent }
             this.snapshot.projectiles.push(projectile)
             this.projectileHits.set(projectile.id, new Set())
             structure.cooldown = 1.1
@@ -481,6 +481,22 @@ export class GameEngine {
 
   private findOffscreenSpawn(inputs: ReadonlyMap<string, InputState>): { x: number; y: number } {
     const living = this.snapshot.players.filter((player) => !player.eliminated)
+    if (this.map.spawnPoints.length > 0) {
+      const isOffscreen = (point: { x: number; y: number }) => living.every((player) => {
+        const input = inputs.get(player.id)
+        const halfWidth = clamp(input?.viewportWidth ?? 1280, 320, 2560) / 2
+        const halfHeight = clamp(input?.viewportHeight ?? 720, 240, 1440) / 2
+        return Math.abs(point.x - player.x) > halfWidth + 30 || Math.abs(point.y - player.y) > halfHeight + 30
+      })
+      const viable = this.map.spawnPoints.filter(isOffscreen)
+      const candidates = viable.length > 0 ? viable : [...this.map.spawnPoints].sort((a, b) => {
+        const nearestA = Math.min(...living.map((player) => distanceSquared(a.x, a.y, player.x, player.y)))
+        const nearestB = Math.min(...living.map((player) => distanceSquared(b.x, b.y, player.x, player.y)))
+        return nearestB - nearestA
+      }).slice(0, 2)
+      const point = this.random.pick(candidates)
+      return { x: point.x + this.random.range(-34, 34), y: point.y + this.random.range(-34, 34) }
+    }
     const centerX = living.reduce((sum, player) => sum + player.x, 0) / Math.max(1, living.length)
     const centerY = living.reduce((sum, player) => sum + player.y, 0) / Math.max(1, living.length)
     const angle = this.random.range(0, Math.PI * 2)
@@ -561,7 +577,9 @@ export class GameEngine {
 
       const target = this.nearestLivingPlayer(enemy.x, enemy.y)
       if (!target) continue
-      let angle = Math.atan2(target.y - enemy.y, target.x - enemy.x)
+      const targetAngle = Math.atan2(target.y - enemy.y, target.x - enemy.x)
+      const hasSight = this.hasLineOfSight(enemy.x, enemy.y, target.x, target.y)
+      let angle = this.navigationAngle(enemy.x, enemy.y, target.x, target.y, targetAngle)
       const distance = Math.sqrt(distanceSquared(enemy.x, enemy.y, target.x, target.y))
       let speed = enemy.speed * (enemy.slow > 0 ? 0.48 : 1)
       const bossCadence = enemy.finale ? FINAL_BOSS_CADENCE : 1
@@ -569,16 +587,16 @@ export class GameEngine {
       if (enemy.type === 'charger' && enemy.phase % 4.2 < 0.9) speed *= 2.25
       if (enemy.type === 'leech') speed *= 1.12
 
-      if ((enemy.type === 'spitter' || enemy.type === 'hexer') && distance < (enemy.type === 'hexer' ? 410 : 335)) {
+      if ((enemy.type === 'spitter' || enemy.type === 'hexer') && hasSight && distance < (enemy.type === 'hexer' ? 410 : 335)) {
         speed = distance < 220 ? -enemy.speed * 0.5 : 0
         if (enemy.attackCooldown <= 0) {
-          this.spawnEnemyProjectile(enemy, angle, enemy.type === 'hexer' ? 140 : 155, enemy.type === 'hexer' ? 9 : 7)
+          this.spawnEnemyProjectile(enemy, targetAngle, enemy.type === 'hexer' ? 140 : 155, enemy.type === 'hexer' ? 9 : 7)
           enemy.attackCooldown = enemy.type === 'hexer' ? 2.45 : 2.05
         }
       }
 
       if (enemy.type === 'tollkeeper') {
-        if (enemy.attackCooldown <= 0 && distance < 900) {
+        if (enemy.attackCooldown <= 0 && hasSight && distance < 900) {
           for (let shot = 0; shot < 12; shot += 1) this.spawnEnemyProjectile(enemy, shot / 12 * Math.PI * 2 + enemy.phase * 0.42, 118, 9)
           enemy.attackCooldown = 3.3 * bossCadence
         }
@@ -586,7 +604,7 @@ export class GameEngine {
           enemy.dashAngle = angle
           enemy.dashRemaining = 0.62
           enemy.abilityCooldown = 5.1 * bossCadence
-          for (let shot = -1; shot <= 1; shot += 1) this.spawnEnemyProjectile(enemy, angle + shot * 0.18, 128, 10)
+          for (let shot = -1; shot <= 1; shot += 1) this.spawnEnemyProjectile(enemy, targetAngle + shot * 0.18, 128, 10)
         }
         if ((enemy.summonCooldown ?? 0) <= 0) {
           this.summonBossAdds(['thrall', 'thrall', 'wraith'], inputs)
@@ -595,8 +613,8 @@ export class GameEngine {
       }
 
       if (enemy.type === 'broodmother') {
-        if (distance < 260) angle += Math.PI
-        if (enemy.attackCooldown <= 0 && distance < 940) {
+        if (hasSight && distance < 260) angle = targetAngle + Math.PI
+        if (enemy.attackCooldown <= 0 && hasSight && distance < 940) {
           for (let shot = 0; shot < 10; shot += 1) this.spawnEnemyProjectile(enemy, shot / 10 * Math.PI * 2 - enemy.phase * 0.5, 108, 8)
           enemy.attackCooldown = 2.85 * bossCadence
         }
@@ -613,15 +631,15 @@ export class GameEngine {
       }
 
       if (enemy.type === 'graveknight') {
-        if (enemy.attackCooldown <= 0 && distance < 850) {
-          for (let shot = -2; shot <= 2; shot += 1) this.spawnEnemyProjectile(enemy, angle + shot * 0.16, 145, 11)
+        if (enemy.attackCooldown <= 0 && hasSight && distance < 850) {
+          for (let shot = -2; shot <= 2; shot += 1) this.spawnEnemyProjectile(enemy, targetAngle + shot * 0.16, 145, 11)
           enemy.attackCooldown = 2.4 * bossCadence
         }
         if ((enemy.abilityCooldown ?? 0) <= 0) {
           enemy.dashAngle = angle
           enemy.dashRemaining = 0.78
           enemy.abilityCooldown = 4.1 * bossCadence
-          for (let shot = -3; shot <= 3; shot += 1) this.spawnEnemyProjectile(enemy, angle + shot * 0.09, 150, 12)
+          for (let shot = -3; shot <= 3; shot += 1) this.spawnEnemyProjectile(enemy, targetAngle + shot * 0.09, 150, 12)
         }
         if ((enemy.summonCooldown ?? 0) <= 0) {
           this.summonBossAdds(['wraith', 'wraith', 'wraith'], inputs)
@@ -630,9 +648,9 @@ export class GameEngine {
       }
 
       if (enemy.type === 'eclipse-eye') {
-        angle += (enemy.strafeDirection ?? 1) * (distance > 520 ? 0.55 : distance < 300 ? 2.2 : 1.35)
+        if (hasSight) angle = targetAngle + (enemy.strafeDirection ?? 1) * (distance > 520 ? 0.55 : distance < 300 ? 2.2 : 1.35)
         speed *= 1.2
-        if (enemy.attackCooldown <= 0 && distance < 980) {
+        if (enemy.attackCooldown <= 0 && hasSight && distance < 980) {
           for (let shot = 0; shot < 16; shot += 1) this.spawnEnemyProjectile(enemy, shot / 16 * Math.PI * 2 + enemy.phase * 0.7, 105, 10)
           enemy.attackCooldown = 2.35 * bossCadence
         }
@@ -658,8 +676,7 @@ export class GameEngine {
 
       enemy.vx = Math.cos(angle) * speed
       enemy.vy = Math.sin(angle) * speed
-      enemy.x += enemy.vx * dt
-      enemy.y += enemy.vy * dt
+      this.moveCircle(enemy, enemy.vx * dt, enemy.vy * dt, enemy.radius)
       const canContact = isBoss(enemy.type) ? (enemy.contactCooldown ?? 0) <= 0 : enemy.attackCooldown <= 0
       if (distance < enemy.radius + 13 && canContact) {
         this.damagePlayer(target, enemy.damage)
@@ -678,8 +695,19 @@ export class GameEngine {
     for (const projectile of this.snapshot.projectiles) {
       projectile.life -= dt
       if (!projectile.enemy && (projectile.homing ?? 0) > 0) this.steerHomingProjectile(projectile, dt)
-      projectile.x += projectile.vx * dt
-      projectile.y += projectile.vy * dt
+      const nextX = projectile.x + projectile.vx * dt
+      const nextY = projectile.y + projectile.vy * dt
+      if (this.segmentHitsWall(projectile.x, projectile.y, nextX, nextY, projectile.radius)) {
+        if (!projectile.enemy && (projectile.blastRadius ?? 0) > 0) {
+          const hits = this.projectileHits.get(projectile.id) ?? new Set<number>()
+          this.detonateProjectile(projectile, projectile.x, projectile.y, hits)
+          this.projectileHits.set(projectile.id, hits)
+        }
+        projectile.life = 0
+        continue
+      }
+      projectile.x = nextX
+      projectile.y = nextY
       if (projectile.life <= 0) {
         if (!projectile.enemy && (projectile.blastRadius ?? 0) > 0) {
           const hits = this.projectileHits.get(projectile.id) ?? new Set<number>()
@@ -974,6 +1002,80 @@ export class GameEngine {
 
   private heal(player: PlayerState, amount: number) {
     player.health = Math.min(player.maxHealth, player.health + amount)
+  }
+
+  private moveCircle(entity: { x: number; y: number; vx: number; vy: number }, dx: number, dy: number, radius: number) {
+    const bounds = this.map.bounds
+    const nextX = clamp(entity.x + dx, bounds.minX + radius, bounds.maxX - radius)
+    if (!this.circleHitsWall(nextX, entity.y, radius)) entity.x = nextX
+    else entity.vx = 0
+    const nextY = clamp(entity.y + dy, bounds.minY + radius, bounds.maxY - radius)
+    if (!this.circleHitsWall(entity.x, nextY, radius)) entity.y = nextY
+    else entity.vy = 0
+  }
+
+  private circleHitsWall(x: number, y: number, radius: number): boolean {
+    return this.map.walls.some((wall) => {
+      const closestX = clamp(x, wall.x - wall.width / 2, wall.x + wall.width / 2)
+      const closestY = clamp(y, wall.y - wall.height / 2, wall.y + wall.height / 2)
+      return distanceSquared(x, y, closestX, closestY) < radius * radius
+    })
+  }
+
+  private segmentHitsWall(ax: number, ay: number, bx: number, by: number, padding = 0): boolean {
+    return this.map.walls.some((wall) => this.segmentIntersectsWall(ax, ay, bx, by, wall, padding))
+  }
+
+  private segmentIntersectsWall(ax: number, ay: number, bx: number, by: number, wall: MapWall, padding: number): boolean {
+    const minX = wall.x - wall.width / 2 - padding
+    const maxX = wall.x + wall.width / 2 + padding
+    const minY = wall.y - wall.height / 2 - padding
+    const maxY = wall.y + wall.height / 2 + padding
+    const dx = bx - ax
+    const dy = by - ay
+    let minimum = 0
+    let maximum = 1
+    for (const [origin, delta, min, max] of [[ax, dx, minX, maxX], [ay, dy, minY, maxY]] as const) {
+      if (Math.abs(delta) < 0.00001) {
+        if (origin < min || origin > max) return false
+        continue
+      }
+      const first = (min - origin) / delta
+      const second = (max - origin) / delta
+      const entry = Math.min(first, second)
+      const exit = Math.max(first, second)
+      minimum = Math.max(minimum, entry)
+      maximum = Math.min(maximum, exit)
+      if (minimum > maximum) return false
+    }
+    return maximum >= 0 && minimum <= 1
+  }
+
+  private hasLineOfSight(ax: number, ay: number, bx: number, by: number): boolean {
+    return !this.segmentHitsWall(ax, ay, bx, by, 2)
+  }
+
+  private navigationAngle(x: number, y: number, targetX: number, targetY: number, directAngle: number): number {
+    if (this.map.id !== 'reliquary' || this.hasLineOfSight(x, y, targetX, targetY)) return directAngle
+    const columnFor = (value: number) => value < -450 ? 0 : value > 450 ? 2 : 1
+    const rowFor = (value: number) => value < -325 ? 0 : value > 325 ? 2 : 1
+    const columns = [-900, 0, 900]
+    const rows = [-650, 0, 650]
+    const column = columnFor(x)
+    const targetColumn = columnFor(targetX)
+    const row = rowFor(y)
+    const targetRow = rowFor(targetY)
+    if (column !== targetColumn) {
+      const direction = targetColumn > column ? 1 : -1
+      const boundary = direction > 0 ? (column === 0 ? -450 : 450) : (column === 2 ? 450 : -450)
+      return Math.atan2(rows[row] - y, boundary + direction * 118 - x)
+    }
+    if (row !== targetRow) {
+      const direction = targetRow > row ? 1 : -1
+      const boundary = direction > 0 ? (row === 0 ? -325 : 325) : (row === 2 ? 325 : -325)
+      return Math.atan2(boundary + direction * 118 - y, columns[column] - x)
+    }
+    return directAngle
   }
 
   private nearestLivingPlayer(x: number, y: number): PlayerState | undefined {

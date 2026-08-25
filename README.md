@@ -5,12 +5,14 @@ An original 1–4 player browser survival roguelite prototype inspired by the ac
 ## Playtest loop
 
 - Move with WASD and aim/fire with the mouse.
-- Choose one of eight hunters and three weapons.
+- Choose one of eight hunters, ten weapons, and three battlefields—or randomize any of them.
 - Fill one shared squad XP track, then let every active hunter choose simultaneously from three personal upgrades with three rerolls.
 - Shape individual builds from 24 one-rank common transformations plus five signature upgrades for every hunter, including a unique combat companion.
 - Revive downed teammates with E before their fifteen-second bleedout ends.
 - If you are eliminated while allies remain, cycle between them with Q/E or the spectator controls.
-- Use the Moonwell, Ward Tower, and Ritual Stone to regroup.
+- Fight across the open Gloamreach Moor, the volcanic Emberfall Ruins, or the nine-room Reliquary dungeon.
+- Use three map-specific structures to heal, fire on enemies, or accelerate your weapon.
+- In the Reliquary, players, enemies, companions, and projectiles collide with solid walls while monsters navigate through room doors.
 - Fight eight regular enemy archetypes and four scheduled bosses; each boss grants a squad-wide relic while every ordinary upgrade stays personal.
 - Select a compressed four-minute field test or the intended twenty-minute run.
 

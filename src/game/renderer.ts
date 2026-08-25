@@ -1,5 +1,6 @@
 import { isBoss } from './data'
-import type { CompanionState, EnemyState, GameEvent, GameSnapshot, PlayerState, StructureState } from './types'
+import { mapById, type MapDefinition } from './maps'
+import type { CompanionState, EnemyState, GameEvent, GameSnapshot, PlayerState, StructureState, StructureType } from './types'
 
 interface Effect {
   x: number
@@ -19,6 +20,17 @@ const ENEMY_SPRITE_INDEX: Record<EnemyState['type'], number> = {
   thrall: 0, skitter: 1, spitter: 2, bulwark: 3,
   wraith: 4, charger: 5, hexer: 6, leech: 7,
   tollkeeper: 8, broodmother: 9, graveknight: 10, 'eclipse-eye': 11,
+}
+const STRUCTURE_ART: Record<StructureType, { index: number; size: number; label: string; color: string }> = {
+  moonwell: { index: 0, size: 156, label: 'MOONWELL · HEALS', color: '116, 216, 194' },
+  'ward-tower': { index: 1, size: 164, label: 'WARD TOWER · FIRES', color: '116, 216, 194' },
+  'ritual-stone': { index: 2, size: 158, label: 'RITUAL STONE · RAPID FIRE', color: '242, 212, 121' },
+  'sun-forge': { index: 3, size: 154, label: 'SUN FORGE · HEALS', color: '255, 121, 93' },
+  'cinder-ballista': { index: 4, size: 158, label: 'CINDER BALLISTA · FIRES', color: '255, 121, 93' },
+  'ember-altar': { index: 5, size: 154, label: 'EMBER ALTAR · RAPID FIRE', color: '255, 168, 76' },
+  'reliquary-font': { index: 6, size: 154, label: 'RELIQUARY FONT · HEALS', color: '137, 201, 255' },
+  'ossuary-sentry': { index: 7, size: 158, label: 'OSSUARY SENTRY · FIRES', color: '201, 185, 255' },
+  'echo-seal': { index: 8, size: 150, label: 'ECHO SEAL · RAPID FIRE', color: '201, 185, 255' },
 }
 
 // Every runtime sprite is authored facing east. Angles in the left half-plane are
@@ -49,7 +61,7 @@ export class GameRenderer {
   private readonly companionSpriteAtlas = new Image()
   private readonly enemySpriteAtlas = new Image()
   private readonly structureAtlas = new Image()
-  private readonly groundTexture = new Image()
+  private readonly biomeTextureAtlas = new Image()
 
   constructor(canvas: HTMLCanvasElement, artBase: string) {
     this.canvas = canvas
@@ -60,8 +72,8 @@ export class GameRenderer {
     this.weaponSpriteAtlas.src = `${artBase}weapon-sprites-v1.webp`
     this.companionSpriteAtlas.src = `${artBase}companion-sprites-v1.webp`
     this.enemySpriteAtlas.src = `${artBase}enemy-sprites.webp`
-    this.structureAtlas.src = `${artBase}structure-atlas.webp`
-    this.groundTexture.src = `${artBase}night-ground.webp`
+    this.structureAtlas.src = `${artBase}structure-atlas-v2.webp`
+    this.biomeTextureAtlas.src = `${artBase}biome-textures-v1.webp`
     this.resize()
   }
 
@@ -87,12 +99,14 @@ export class GameRenderer {
     }
 
     this.captureEffects(snapshot.events)
+    const map = mapById(snapshot.mapId)
     const context = this.context
     context.save()
     context.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
-    this.drawGround()
+    this.drawGround(map)
     context.translate(this.width / 2 - this.cameraX, this.height / 2 - this.cameraY)
-    this.drawTerrainDetails()
+    this.drawTerrainDetails(map)
+    this.drawWalls(map)
     this.drawStructures(snapshot.structures)
     this.drawPickups(snapshot)
     this.drawProjectiles(snapshot, predictionSeconds)
@@ -114,32 +128,37 @@ export class GameRenderer {
     return { width: this.width, height: this.height }
   }
 
-  private drawGround() {
+  private drawGround(map: MapDefinition) {
     const context = this.context
-    context.fillStyle = '#07100e'
+    context.fillStyle = map.id === 'emberfall' ? '#100908' : map.id === 'reliquary' ? '#0a0b0e' : '#07100e'
     context.fillRect(0, 0, this.width, this.height)
-    if (this.groundTexture.complete && this.groundTexture.naturalWidth > 0) {
-      const tileSize = 627
+    if (this.biomeTextureAtlas.complete && this.biomeTextureAtlas.naturalWidth > 0) {
+      const tileSize = map.id === 'reliquary' ? 512 : 627
       const offsetX = ((-this.cameraX % tileSize) + tileSize) % tileSize - tileSize
       const offsetY = ((-this.cameraY % tileSize) + tileSize) % tileSize - tileSize
+      const sourceWidth = this.biomeTextureAtlas.naturalWidth / 2
+      const sourceHeight = this.biomeTextureAtlas.naturalHeight / 2
+      const sourceX = (map.textureIndex % 2) * sourceWidth
+      const sourceY = Math.floor(map.textureIndex / 2) * sourceHeight
       context.save()
-      context.globalAlpha = 0.48
+      context.globalAlpha = map.id === 'gloamreach' ? 0.55 : 0.68
+      context.imageSmoothingEnabled = false
       for (let x = offsetX; x < this.width + tileSize; x += tileSize) {
         for (let y = offsetY; y < this.height + tileSize; y += tileSize) {
-          context.drawImage(this.groundTexture, x, y, tileSize, tileSize)
+          context.drawImage(this.biomeTextureAtlas, sourceX, sourceY, sourceWidth, sourceHeight, x, y, tileSize, tileSize)
         }
       }
       context.restore()
     }
     const glow = context.createRadialGradient(this.width / 2, this.height / 2, 0, this.width / 2, this.height / 2, this.width * 0.7)
-    glow.addColorStop(0, 'rgba(31, 69, 56, .28)')
-    glow.addColorStop(0.55, 'rgba(7, 16, 14, .14)')
+    glow.addColorStop(0, map.id === 'emberfall' ? 'rgba(104, 44, 30, .22)' : map.id === 'reliquary' ? 'rgba(50, 47, 78, .22)' : 'rgba(31, 69, 56, .28)')
+    glow.addColorStop(0.55, map.id === 'emberfall' ? 'rgba(26, 12, 9, .12)' : 'rgba(7, 16, 14, .14)')
     glow.addColorStop(1, 'rgba(1, 6, 5, .76)')
     context.fillStyle = glow
     context.fillRect(0, 0, this.width, this.height)
   }
 
-  private drawTerrainDetails() {
+  private drawTerrainDetails(map: MapDefinition) {
     const context = this.context
     const left = this.cameraX - this.width / 2 - 90
     const top = this.cameraY - this.height / 2 - 90
@@ -150,21 +169,21 @@ export class GameRenderer {
     for (let x = startX; x < left + this.width + 180; x += grid) {
       for (let y = startY; y < top + this.height + 180; y += grid) {
         const hash = Math.abs(Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1
-        if (hash > 0.78) {
+        if (hash > 0.78 && map.id === 'gloamreach') {
           context.strokeStyle = 'rgba(90, 130, 104, .15)'
           context.beginPath()
           context.moveTo(x - 8, y + 6)
           context.quadraticCurveTo(x, y - 12 - hash * 10, x + 10, y + 4)
           context.stroke()
-        } else if (hash < 0.08) {
-          context.fillStyle = 'rgba(113, 138, 118, .11)'
+        } else if (hash < 0.08 && map.id !== 'reliquary') {
+          context.fillStyle = map.id === 'emberfall' ? 'rgba(255, 104, 64, .2)' : 'rgba(113, 138, 118, .11)'
           context.beginPath()
           context.arc(x, y, 2 + hash * 18, 0, TAU)
           context.fill()
         }
       }
     }
-    context.strokeStyle = 'rgba(242, 212, 121, .13)'
+    context.strokeStyle = map.id === 'emberfall' ? 'rgba(255, 121, 93, .14)' : map.id === 'reliquary' ? 'rgba(201, 185, 255, .09)' : 'rgba(242, 212, 121, .13)'
     context.lineWidth = 3
     context.setLineDash([6, 18])
     context.beginPath()
@@ -173,16 +192,53 @@ export class GameRenderer {
     context.setLineDash([])
   }
 
+  private drawWalls(map: MapDefinition) {
+    if (map.walls.length === 0) return
+    const context = this.context
+    const textureReady = this.biomeTextureAtlas.complete && this.biomeTextureAtlas.naturalWidth > 0
+    const sourceWidth = this.biomeTextureAtlas.naturalWidth / 2
+    const sourceHeight = this.biomeTextureAtlas.naturalHeight / 2
+    for (const wall of map.walls) {
+      const left = wall.x - wall.width / 2
+      const top = wall.y - wall.height / 2
+      context.save()
+      context.shadowColor = 'rgba(0,0,0,.86)'
+      context.shadowBlur = 20
+      context.shadowOffsetY = 10
+      context.fillStyle = '#111319'
+      context.fillRect(left, top, wall.width, wall.height)
+      context.restore()
+      context.save()
+      context.beginPath()
+      context.rect(left, top, wall.width, wall.height)
+      context.clip()
+      if (textureReady) {
+        context.globalAlpha = 0.74
+        context.imageSmoothingEnabled = false
+        for (let x = left; x < left + wall.width; x += 128) {
+          for (let y = top; y < top + wall.height; y += 128) {
+            context.drawImage(this.biomeTextureAtlas, sourceWidth, sourceHeight, sourceWidth, sourceHeight, x, y, 128, 128)
+          }
+        }
+      }
+      context.fillStyle = 'rgba(5,7,10,.3)'
+      context.fillRect(left, top, wall.width, wall.height)
+      context.restore()
+      context.strokeStyle = 'rgba(201,185,255,.32)'
+      context.lineWidth = 2
+      context.strokeRect(left + 1, top + 1, Math.max(0, wall.width - 2), Math.max(0, wall.height - 2))
+      context.strokeStyle = 'rgba(242,212,121,.14)'
+      context.lineWidth = 1
+      context.strokeRect(left + 5, top + 5, Math.max(0, wall.width - 10), Math.max(0, wall.height - 10))
+    }
+  }
+
   private drawStructures(structures: StructureState[]) {
     const context = this.context
     for (const structure of structures) {
       const pulse = 0.5 + Math.sin(performance.now() / 620 + structure.id) * 0.5
+      const art = STRUCTURE_ART[structure.type]
       if (this.structureAtlas.complete && this.structureAtlas.naturalWidth > 0) {
-        const art = {
-          moonwell: { index: 0, size: 156, label: 'MOONWELL · HEALS', color: '116, 216, 194' },
-          'ward-tower': { index: 1, size: 164, label: 'WARD TOWER · FIRES', color: '116, 216, 194' },
-          'ritual-stone': { index: 2, size: 158, label: 'RITUAL STONE · RAPID FIRE', color: '242, 212, 121' },
-        }[structure.type]
         const glow = context.createRadialGradient(structure.x, structure.y, 4, structure.x, structure.y, structure.radius * 1.18)
         glow.addColorStop(0, `rgba(${art.color}, ${0.13 + pulse * 0.06})`)
         glow.addColorStop(1, `rgba(${art.color}, 0)`)
@@ -190,53 +246,19 @@ export class GameRenderer {
         context.beginPath()
         context.arc(structure.x, structure.y, structure.radius * 1.18, 0, TAU)
         context.fill()
-        this.drawAtlasSprite(this.structureAtlas, 2, 2, art.index, structure.x, structure.y, art.size, art.size, 0, true)
-        this.drawLabel(structure.x, structure.y + structure.radius + 18, art.label, structure.type === 'ritual-stone' ? '#e9d68f' : '#9fe4d5')
+        this.drawAtlasSprite(this.structureAtlas, 3, 3, art.index, structure.x, structure.y, art.size, art.size, 0, true)
+        this.drawLabel(structure.x, structure.y + structure.radius + 18, art.label, `rgb(${art.color})`)
         continue
       }
-      if (structure.type === 'moonwell') {
-        context.fillStyle = `rgba(116, 216, 194, ${0.06 + pulse * 0.04})`
-        context.beginPath()
-        context.arc(structure.x, structure.y, structure.radius, 0, TAU)
-        context.fill()
-        context.strokeStyle = '#74d8c2'
-        context.lineWidth = 2
-        context.beginPath()
-        context.arc(structure.x, structure.y, 25 + pulse * 3, 0, TAU)
-        context.stroke()
-        this.drawGlyph(structure.x, structure.y + 1, '✚', '#b8fff0', 19)
-        this.drawLabel(structure.x, structure.y + 48, 'MOONWELL · HEALS')
-      } else if (structure.type === 'ward-tower') {
-        context.strokeStyle = '#74d8c2'
-        context.lineWidth = 2
-        context.beginPath()
-        context.moveTo(structure.x, structure.y - 30)
-        context.lineTo(structure.x - 22, structure.y + 24)
-        context.lineTo(structure.x + 22, structure.y + 24)
-        context.closePath()
-        context.stroke()
-        this.drawGlyph(structure.x, structure.y + 2, 'ϟ', '#b8fff0', 18)
-        this.drawLabel(structure.x, structure.y + 48, 'WARD TOWER · FIRES')
-      } else {
-        context.fillStyle = `rgba(242, 212, 121, ${0.045 + pulse * 0.035})`
-        context.beginPath()
-        context.arc(structure.x, structure.y, structure.radius, 0, TAU)
-        context.fill()
-        context.strokeStyle = 'rgba(242, 212, 121, .6)'
-        context.lineWidth = 2
-        context.beginPath()
-        for (let point = 0; point < 6; point += 1) {
-          const angle = (point / 6) * TAU - Math.PI / 2
-          const radius = point % 2 === 0 ? 28 : 18
-          const x = structure.x + Math.cos(angle) * radius
-          const y = structure.y + Math.sin(angle) * radius
-          if (point === 0) context.moveTo(x, y)
-          else context.lineTo(x, y)
-        }
-        context.closePath()
-        context.stroke()
-        this.drawLabel(structure.x, structure.y + 48, 'RITUAL STONE · RAPID FIRE')
-      }
+      context.fillStyle = `rgba(${art.color}, ${0.05 + pulse * 0.04})`
+      context.strokeStyle = `rgba(${art.color}, .7)`
+      context.lineWidth = 2
+      context.beginPath()
+      context.arc(structure.x, structure.y, 24 + pulse * 3, 0, TAU)
+      context.fill()
+      context.stroke()
+      this.drawGlyph(structure.x, structure.y + 1, structure.effect === 'heal' ? '✚' : structure.effect === 'turret' ? 'ϟ' : '✦', `rgb(${art.color})`, 19)
+      this.drawLabel(structure.x, structure.y + 48, art.label, `rgb(${art.color})`)
     }
   }
 

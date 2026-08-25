@@ -674,3 +674,35 @@ body::before {
   .recap-heading { padding: 12px 24px 36px; text-align: center; }
   .recap-heading .recap-sigil { margin: -34px auto 20px; background: #07100e; }
 }
+
+.random-loadout-button.active { border-color: var(--gold); color: #07100e; background: var(--gold); }
+.map-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 13px; }
+.map-card { min-height: 300px; display: flex; flex-direction: column; overflow: hidden; padding: 0; }
+.map-card:disabled { opacity: .62; cursor: default; }
+.map-art {
+  width: 100%;
+  height: 164px;
+  display: block;
+  flex: 0 0 164px;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  filter: saturate(.9) contrast(1.08) brightness(.78);
+  transition: filter .2s, transform .25s;
+}
+.map-card:hover:not(:disabled) .map-art, .map-card.selected .map-art { filter: saturate(1.08) contrast(1.08) brightness(.96); transform: scale(1.025); }
+.map-copy { position: relative; z-index: 1; display: flex; flex: 1; flex-direction: column; padding: 18px; background: linear-gradient(180deg, rgba(5,13,10,.88), #07100e); }
+.map-copy small { color: var(--accent); font-size: 7px; letter-spacing: .13em; }
+.map-copy strong { margin: 6px 0 9px; color: var(--ink); font: 500 20px 'Oswald', sans-serif; text-transform: uppercase; }
+.map-copy em { color: var(--muted); font-size: 8px; font-style: normal; line-height: 1.55; }
+.map-copy b { margin-top: auto; padding-top: 16px; color: color-mix(in srgb, var(--accent) 82%, white); font-size: 7px; font-weight: 400; letter-spacing: .07em; }
+.host-map-note { margin: 10px 0 0; color: var(--dim); font-size: 8px; }
+.map-hud { position: absolute; right: 105px; top: 20px; display: grid; gap: 3px; text-align: right; text-shadow: 0 2px 8px #000; }
+.map-hud small { color: var(--muted); font-size: 6px; letter-spacing: .14em; }
+.map-hud strong { color: var(--gold); font: 500 10px 'Oswald', sans-serif; letter-spacing: .09em; text-transform: uppercase; }
+
+@media (max-width: 760px) {
+  .map-grid { grid-template-columns: 1fr; }
+  .map-card { min-height: 220px; display: grid; grid-template-columns: 132px 1fr; }
+  .map-art { width: 132px; height: 100%; min-height: 220px; }
+  .map-hud { display: none; }
+}

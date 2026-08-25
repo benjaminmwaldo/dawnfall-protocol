@@ -10,6 +10,13 @@ export type EnemyType =
 export type BossType = 'tollkeeper' | 'broodmother' | 'graveknight' | 'eclipse-eye'
 export type CompanionKind = 'gravewing' | 'ashkit' | 'aegis-hound' | 'mercy-moth' | 'shadecat' | 'storm-wisp' | 'thornling' | 'sunbird'
 export type GamePhase = 'playing' | 'upgrade' | 'victory' | 'defeat'
+export type MapId = 'gloamreach' | 'emberfall' | 'reliquary'
+export type MapChoice = MapId | 'random'
+export type StructureEffect = 'heal' | 'turret' | 'haste'
+export type StructureType =
+  | 'moonwell' | 'ward-tower' | 'ritual-stone'
+  | 'sun-forge' | 'cinder-ballista' | 'ember-altar'
+  | 'reliquary-font' | 'ossuary-sentry' | 'echo-seal'
 
 export interface PlayerConfig {
   id: string
@@ -134,11 +141,20 @@ export interface CompanionState {
 
 export interface StructureState {
   id: number
-  type: 'moonwell' | 'ward-tower' | 'ritual-stone'
+  type: StructureType
+  effect: StructureEffect
   x: number
   y: number
   radius: number
   cooldown: number
+}
+
+export interface MapWall {
+  id: string
+  x: number
+  y: number
+  width: number
+  height: number
 }
 
 export interface GameEvent {
@@ -165,6 +181,7 @@ export interface PlayerUpgradeOffer {
 
 export interface GameSnapshot {
   seed: number
+  mapId: MapId
   phase: GamePhase
   timeRemaining: number
   duration: number

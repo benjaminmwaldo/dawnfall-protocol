@@ -16,6 +16,8 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
   await expect(page.locator('.portrait-art')).toHaveCount(8)
   await expect(page.locator('.portrait-art').first()).toHaveCSS('background-image', /hunter-portraits-v3\.webp/)
   await expect(page.locator('.weapon-art')).toHaveCount(10)
+  await expect(page.locator('.map-card')).toHaveCount(3)
+  await expect(page.locator('[data-map="reliquary"]')).toContainText('9 ROOMS')
   await expect(page.locator('[data-weapon="seeker"]')).toContainText('Nightjar')
   const initialCharacter = await page.locator('[data-character].selected').getAttribute('data-character')
   await page.getByTestId('random-character').click()
@@ -26,9 +28,12 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
   await page.locator('[data-weapon="sword"]').click()
   await expect(page.locator('[data-weapon="sword"]')).toHaveClass(/selected/)
   await expect(page.locator('[data-weapon="sword"] .weapon-art')).toHaveCSS('background-image', /sword-dawncleaver\.webp/)
+  await page.locator('[data-map="reliquary"]').click()
+  await expect(page.locator('[data-map="reliquary"]')).toHaveClass(/selected/)
   await page.getByTestId('launch-button').click()
   await expect(page.getByTestId('game-shell')).toBeVisible()
   await expect(page.locator('#game-canvas')).toBeVisible()
+  await expect(page.locator('#map-hud')).toContainText('The Reliquary')
   await page.mouse.move(1180, 450)
   await page.mouse.down()
   await page.waitForTimeout(550)
@@ -46,7 +51,8 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
     expect.stringContaining('weapon-sprites-v1.webp'),
     expect.stringContaining('companion-sprites-v1.webp'),
     expect.stringContaining('enemy-sprites.webp'),
-    expect.stringContaining('structure-atlas.webp'),
+    expect.stringContaining('structure-atlas-v2.webp'),
+    expect.stringContaining('biome-textures-v1.webp'),
     expect.stringContaining('night-ground.webp'),
   ]))
   expect(failedRequests).toEqual([])

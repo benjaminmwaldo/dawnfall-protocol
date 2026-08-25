@@ -1,11 +1,11 @@
 import Peer, { type DataConnection } from 'peerjs'
-import type { GameSnapshot, InputState, PlayerConfig } from './game/types'
+import type { GameSnapshot, InputState, MapId, PlayerConfig } from './game/types'
 
 type NetworkMessage =
   | { type: 'lobby'; players: PlayerConfig[] }
   | { type: 'config'; config: PlayerConfig }
   | { type: 'input'; playerId: string; input: InputState }
-  | { type: 'start'; configs: PlayerConfig[]; duration: number; seed: number }
+  | { type: 'start'; configs: PlayerConfig[]; duration: number; seed: number; mapId: MapId }
   | { type: 'snapshot'; snapshot: GameSnapshot }
   | { type: 'upgrade'; playerId: string; upgradeId: string }
   | { type: 'reroll'; playerId: string }
@@ -13,7 +13,7 @@ type NetworkMessage =
 
 export interface NetworkCallbacks {
   onLobby(players: PlayerConfig[]): void
-  onStart(configs: PlayerConfig[], duration: number, seed: number): void
+  onStart(configs: PlayerConfig[], duration: number, seed: number, mapId: MapId): void
   onSnapshot(snapshot: GameSnapshot): void
   onGuestInput(playerId: string, input: InputState): void
   onUpgrade(playerId: string, upgradeId: string): void
@@ -93,9 +93,9 @@ export class MultiplayerSession {
     }
   }
 
-  startGame(duration: number, seed: number) {
+  startGame(duration: number, seed: number, mapId: MapId) {
     if (!this.isHost) return
-    this.broadcast({ type: 'start', configs: [...this.players], duration, seed })
+    this.broadcast({ type: 'start', configs: [...this.players], duration, seed, mapId })
   }
 
   sendInput(playerId: string, input: InputState) {
@@ -184,7 +184,7 @@ export class MultiplayerSession {
       this.players = message.players
       this.callbacks.onLobby([...message.players])
     } else if (message.type === 'start') {
-      this.callbacks.onStart(message.configs, message.duration, message.seed)
+      this.callbacks.onStart(message.configs, message.duration, message.seed, message.mapId)
     } else if (message.type === 'snapshot') {
       this.callbacks.onSnapshot(message.snapshot)
     } else if (message.type === 'notice') {

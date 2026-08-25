@@ -1,8 +1,9 @@
 import './style.css'
 import { BOSS_NAMES, CHARACTERS, PLAYER_COLORS, UPGRADES, WEAPONS, characterById, isBoss, teamBuffById, upgradeById, weaponById } from './game/data'
 import { GameEngine } from './game/engine'
+import { MAPS, mapById } from './game/maps'
 import { GameRenderer } from './game/renderer'
-import type { BossType, GameSnapshot, InputState, PlayerConfig } from './game/types'
+import type { BossType, GameSnapshot, InputState, MapChoice, MapId, PlayerConfig } from './game/types'
 import { MultiplayerSession } from './network'
 
 type Screen = 'home' | 'lobby' | 'game' | 'recap'
@@ -41,6 +42,7 @@ const atlasStyle = (file: string, columns: number, rows: number, index: number) 
   return `background-image:url('${ART_BASE}${file}');background-size:${columns * 100}% ${rows * 100}%;background-position:${x}% ${y}%;`
 }
 const portraitStyle = (character: PlayerConfig['character']) => atlasStyle('hunter-portraits-v3.webp', 4, 2, CHARACTER_ART_INDEX[character])
+const mapArtStyle = (mapId: MapId) => atlasStyle('biome-textures-v1.webp', 2, 2, mapById(mapId).textureIndex)
 const stableArtVariant = (key: string): number => {
   let hash = 2166136261
   for (let index = 0; index < key.length; index += 1) {
@@ -110,6 +112,7 @@ class DawnfallApp {
   private screen: Screen = 'home'
   private mode: SessionMode = 'solo'
   private duration = 240
+  private mapChoice: MapChoice = 'gloamreach'
   private party: PlayerConfig[] = []
   private localConfig: PlayerConfig
   private engine?: GameEngine
@@ -144,7 +147,7 @@ class DawnfallApp {
         this.party = players
         if (this.screen === 'lobby') this.renderLobby()
       },
-      onStart: (configs, duration, seed) => this.beginGuestGame(configs, duration, seed),
+      onStart: (configs, duration, seed, mapId) => this.beginGuestGame(configs, duration, seed, mapId),
       onSnapshot: (snapshot) => {
         this.snapshot = snapshot
         this.lastSnapshotAt = performance.now()
@@ -208,7 +211,7 @@ class DawnfallApp {
         <p class="eyebrow">DESIGN DNA</p>
         <h2>What came from the research</h2>
         <p><em>20 Minutes Till Dawn</em> stands apart from passive survivor-likes through directional aiming, active firing, magazines, reloads, character–weapon pairing, upgrade trees, and boss-granted power spikes.</p>
-        <p>Dawnfall keeps that active tension while giving the squad one shared XP track. Rarer levels pause the night for simultaneous personal drafts: three one-of-one choices and three rerolls for every active hunter. Character companions and signature powers create distinct personal builds; boss relics remain the rare squad-wide power spike.</p>
+        <p>Dawnfall keeps that active tension while giving the squad one shared XP track. Rarer levels pause the night for simultaneous personal drafts: three one-of-one choices and three rerolls for every active hunter. Character companions and signature powers create distinct personal builds; boss relics remain the rare squad-wide power spike. Three original battlefields now change the structures, terrain, sightlines, and navigation—including a solid-walled nine-room dungeon.</p>
         <div class="dialog-rule"></div>
         <p class="small-copy">This prototype uses original names, code, balancing, visual language, characters, enemies, abilities, and hand-directed generated artwork.</p>
       </dialog>
@@ -287,6 +290,15 @@ class DawnfallApp {
                   <span class="weapon-stats"><b>${weapon.damage}</b><small>DMG</small><b>${weapon.infiniteAmmo ? '∞' : weapon.magazine}</b><small>${weapon.infiniteAmmo ? 'AMMO' : 'MAG'}</small></span>
                 </button>`).join('')}
             </div>
+            <div class="section-heading compact map-heading"><span>03</span><div><h2>CHOOSE THE BATTLEGROUND</h2><p>Every map changes the terrain, structures, sightlines, and routes through the horde.</p></div>${canStart ? `<button class="random-loadout-button ${this.mapChoice === 'random' ? 'active' : ''}" data-random-map data-testid="random-map">✦ RANDOM MAP</button>` : ''}</div>
+            <div class="map-grid">
+              ${MAPS.map((map) => `
+                <button class="selection-card map-card ${canStart && this.mapChoice === map.id ? 'selected' : ''}" data-map="${map.id}" style="--accent:${map.accent}" ${canStart ? '' : 'disabled aria-disabled="true"'}>
+                  <span class="map-art" style="${mapArtStyle(map.id)}"></span>
+                  <span class="map-copy"><small>${map.epithet}</small><strong>${map.name}</strong><em>${map.description}</em><b>${map.walls.length > 0 ? `${map.walls.length} SOLID WALL SEGMENTS · 9 ROOMS` : `${map.structures.length} UNIQUE FIELD STRUCTURES`}</b></span>
+                </button>`).join('')}
+            </div>
+            ${canStart ? '' : '<p class="host-map-note">The host will reveal the battleground when the hunt begins.</p>'}
           </section>
           <aside class="party-column">
             ${roomCode ? `<div class="room-card"><small>ROOM CODE</small><strong>${roomCode}</strong><button id="copy-link-button" data-url="${escapeHtml(shareUrl)}">COPY INVITE LINK</button></div>` : ''}
@@ -336,6 +348,14 @@ class DawnfallApp {
       this.localConfig.weapon = choices[Math.floor(Math.random() * choices.length)].id
       this.updateLocalLoadout()
     })
+    document.querySelectorAll<HTMLElement>('[data-map]').forEach((button) => button.addEventListener('click', () => {
+      this.mapChoice = button.dataset.map as MapId
+      this.renderLobby()
+    }))
+    document.querySelector<HTMLElement>('[data-random-map]')?.addEventListener('click', () => {
+      this.mapChoice = 'random'
+      this.renderLobby()
+    })
     document.querySelectorAll<HTMLElement>('[data-duration]').forEach((button) => button.addEventListener('click', () => {
       this.duration = Number(button.dataset.duration)
       this.renderLobby()
@@ -348,8 +368,9 @@ class DawnfallApp {
     document.querySelector('#launch-button')?.addEventListener('click', () => {
       this.audio.unlock()
       const seed = Date.now() % 2_147_483_647
-      if (this.mode === 'host') this.network.startGame(this.duration, seed)
-      this.beginHostGame(this.party, this.duration, seed)
+      const mapId = this.mapChoice === 'random' ? MAPS[Math.floor(Math.random() * MAPS.length)].id : this.mapChoice
+      if (this.mode === 'host') this.network.startGame(this.duration, seed, mapId)
+      this.beginHostGame(this.party, this.duration, seed, mapId)
     })
   }
 
@@ -359,17 +380,17 @@ class DawnfallApp {
     else this.renderLobby()
   }
 
-  private beginHostGame(configs: PlayerConfig[], duration: number, seed: number) {
-    this.engine = new GameEngine(configs, duration, seed)
+  private beginHostGame(configs: PlayerConfig[], duration: number, seed: number, mapId: MapId) {
+    this.engine = new GameEngine(configs, duration, seed, mapId)
     this.snapshot = this.engine.snapshot
     this.inputs.clear()
     this.inputs.set(this.localConfig.id, this.localInput)
     this.renderGame()
   }
 
-  private beginGuestGame(configs: PlayerConfig[], duration: number, seed: number) {
+  private beginGuestGame(configs: PlayerConfig[], duration: number, seed: number, mapId: MapId) {
     this.engine = undefined
-    this.snapshot = new GameEngine(configs, duration, seed).snapshot
+    this.snapshot = new GameEngine(configs, duration, seed, mapId).snapshot
     this.lastSnapshotAt = performance.now()
     this.renderGame()
   }
@@ -380,6 +401,7 @@ class DawnfallApp {
     this.finishQueued = false
     this.spectatingId = undefined
     this.lastHandledEvent = 0
+    const activeMap = mapById(this.snapshot?.mapId ?? 'gloamreach')
     app.innerHTML = `
       <main class="game-shell" data-testid="game-shell">
         <canvas id="game-canvas" aria-label="Dawnfall Protocol game arena"></canvas>
@@ -387,6 +409,7 @@ class DawnfallApp {
           <div class="hud-top-left"><span class="hud-brand">◈ DAWNFALL</span><div id="level-readout">LV. 01</div></div>
           <div class="timer-block"><small id="timer-label">UNTIL DAWN</small><strong id="timer-readout">${formatTime(this.snapshot?.timeRemaining ?? this.duration)}</strong><div class="xp-track"><i id="xp-fill"></i></div></div>
           <button class="mute-button" id="mute-button" aria-label="Toggle sound">SOUND ON</button>
+          <div class="map-hud" id="map-hud"><small>${activeMap.epithet}</small><strong>${activeMap.name}</strong></div>
           <div class="team-hud" id="team-hud"></div>
           <div class="team-buffs-hud" id="team-buffs-hud"></div>
           <div class="perks-hud" id="perks-hud"></div>
@@ -671,6 +694,7 @@ class DawnfallApp {
     const totalKills = this.snapshot.players.reduce((sum, player) => sum + player.kills, 0)
     const totalDamage = this.snapshot.players.reduce((sum, player) => sum + player.damageDealt, 0)
     const highestLevel = Math.max(...this.snapshot.players.map((player) => player.level), 1)
+    const activeMap = mapById(this.snapshot.mapId)
     const recapVariant = stableArtVariant(`${this.snapshot.seed}:${this.snapshot.phase}:recap`)
     app.innerHTML = `
       <main class="recap-shell ${won ? 'victory' : 'defeat'}" data-art-variant="${recapVariant}">
@@ -678,7 +702,7 @@ class DawnfallApp {
           <div class="recap-scene" role="img" aria-label="${won ? 'The squad welcoming the dawn' : 'The squad overcome by the night'}" style="${recapSceneStyle(won, recapVariant)}"><span>CHRONICLE ${recapVariant} / 5</span></div>
           <div class="recap-heading">
             <div class="recap-sigil">${won ? '☼' : '◈'}</div>
-            <p class="eyebrow">HUNT COMPLETE</p>
+            <p class="eyebrow">HUNT COMPLETE · ${activeMap.name.toUpperCase()}</p>
             <h1>${won ? 'DAWN FOUND YOU.' : 'THE NIGHT WON.'}</h1>
             <p>${won ? 'The squad held long enough for the first light to break.' : 'Every hunter fell before the horizon changed.'}</p>
           </div>
