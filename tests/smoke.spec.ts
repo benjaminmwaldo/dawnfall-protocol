@@ -13,7 +13,7 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
   expect(heroArt).toContain('hero-night.webp')
   await page.getByTestId('solo-button').click()
   await expect(page.getByText('CHOOSE YOUR HUNTER')).toBeVisible()
-  await expect(page.locator('.portrait-art')).toHaveCount(8)
+  await expect(page.locator('.portrait-art')).toHaveCount(9)
   await expect(page.locator('.portrait-art').first()).toHaveCSS('background-image', /hunter-portraits-v3\.webp/)
   await expect(page.locator('.weapon-art')).toHaveCount(10)
   await expect(page.locator('.map-card')).toHaveCount(3)
@@ -44,7 +44,7 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
   await page.mouse.down()
   await page.waitForTimeout(550)
   await page.mouse.up()
-  await expect(page.locator('#ammo-hud strong')).toHaveText('∞')
+  await expect(page.locator('#ammo-hud .weapon-readout strong')).toHaveText('∞')
   const loadedArt = await page.evaluate(() => performance.getEntriesByType('resource')
     .map((entry) => entry.name)
     .filter((name) => name.includes('/art/')))
@@ -53,8 +53,8 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
     expect.stringContaining('hunter-portraits-v3.webp'),
     expect.stringContaining('armory-atlas-v2.webp'),
     expect.stringContaining('sword-dawncleaver.webp'),
-    expect.stringContaining('hunter-sprites-v3.webp'),
-    expect.stringContaining('weapon-sprites-v1.webp'),
+    expect.stringContaining('hunter-sprites-v4.webp'),
+    expect.stringContaining('weapon-sprites-v2.webp'),
     expect.stringContaining('companion-sprites-v1.webp'),
     expect.stringContaining('enemy-sprites.webp'),
     expect.stringContaining('structure-atlas-v2.webp'),
@@ -64,7 +64,7 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
   expect(failedRequests).toEqual([])
   expect(pageErrors).toEqual([])
 
-  for (const art of ['upgrade-vesper-1.webp', 'upgrade-seraph-5.webp', 'recap-victory-1.webp', 'recap-defeat-5.webp']) {
+  for (const art of ['upgrade-vesper-1.webp', 'upgrade-seraph-5.webp', 'upgrade-backdrop-1.webp', 'upgrade-rapunsel-5.webp', 'rapunsel-portrait.webp', 'recap-victory-1.webp', 'recap-defeat-5.webp']) {
     expect((await page.request.get(`/art/${art}`)).ok()).toBe(true)
   }
 })
@@ -75,6 +75,6 @@ test('keeps the illustrated interface usable on a phone viewport', async ({ page
   await expect(page.getByRole('heading', { name: /HOLD THE LINE/ })).toBeVisible()
   await expect(page.getByTestId('entry-panel')).toBeVisible()
   await page.getByTestId('solo-button').click()
-  await expect(page.locator('.character-card')).toHaveCount(8)
+  await expect(page.locator('.character-card')).toHaveCount(12)
   await expect(page.getByTestId('launch-button')).toBeVisible()
 })

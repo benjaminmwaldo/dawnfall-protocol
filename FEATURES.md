@@ -12,8 +12,11 @@ This is the cumulative implementation checklist for playtest feedback. New reque
 
 ## Hunters, weapons, and builds
 
-- [x] Eight distinct hunters with character-specific abilities, awakenings, perks, bodies, faces, portraits, and pixel sprites
-- [x] Scarlet is the fire hunter and has an explicitly progressive, human-rights- and climate-justice-focused personality
+- [x] Nine distinct hunters with character-specific abilities, awakenings, perks, bodies, faces, portraits, and pixel sprites
+- [x] Add Rapunsel as a ninth adult hunter with very long brown hair, a slender cute silhouette, and a circular hair-slash ability
+- [x] Give every hunter an active ability on Space with a visible cooldown and consistent input behavior
+- [x] Add tasteful COMING SOON hunter slots for future additions
+- [x] Keep Scarlet progressive but make her politics subtler and balanced with ordinary city life, being single, and occasional fights with her dad
 - [x] Ten distinct weapons, including Dawncleaver, plus weapon-specific perks
 - [x] Random hunter, weapon, and map choices
 - [x] Shared squad XP and synchronized upgrade pauses; every active hunter makes a personal choice before combat resumes
@@ -22,13 +25,15 @@ This is the cumulative implementation checklist for playtest feedback. New reque
 
 ## Hearts, healing, and revives
 
-- [x] Player health uses hearts instead of bars in the HUD and above player models
+- [x] Player health uses minimalist hearts at the screen edge, never floating above player models
 - [x] Five-heart baseline; Bastion starts with a sixth heart
 - [x] Enemy damage is quantized to half-heart packets; common enemies deal half a heart and heavy enemies deal more
 - [x] Every living hunter regenerates one heart every sixty seconds with a visible personal timer ring
 - [x] Healing structures charge one shared one-heart crystal every sixty seconds with a visible world-space ring
 - [x] Twenty-four-second multiplayer rescue window with faster combined progress from multiple revivers
 - [x] Brief post-hit invulnerability that cannot combine too strongly with lifesteal
+- [x] Reduce passive lifesteal and on-kill healing to a much weaker sustain tool
+- [x] Nerf Combustion’s burn ticks and chained death explosions
 
 ## Co-op pressure
 
@@ -41,7 +46,8 @@ This is the cumulative implementation checklist for playtest feedback. New reque
 ## Enemies, bosses, and maps
 
 - [x] Eight ambient enemy archetypes with off-screen spawning and slower, larger enemy bullets
-- [x] Four dynamic bosses with distinct dashes, barrages, movement, and summons
+- [x] Expand to eight dynamic bosses with distinct massive dashes, colored heavy bullets, giant laser lanes, and elite summons
+- [x] Repair the Graveknight silhouette so her sword blade is never visibly cut off
 - [x] Empowered Dawnless Triumvirate finale
 - [x] Gloamreach Moor, Emberfall Ruins, and the nine-room Reliquary dungeon
 - [x] Map-specific terrain, structures, healing crystals, turrets, and fire-rate shrines
@@ -57,3 +63,9 @@ This is the cumulative implementation checklist for playtest feedback. New reque
 - [x] Brighter translucent upgrade UI and a full-art mode that hides choice UI but preserves the readable personality detail
 - [x] Native-aspect upgrade portraits that avoid blurry cover-style stretching
 - [x] Desktop and phone-responsive layouts
+- [x] Rewrite all fifty personality details per hunter in first person and ensure every displayed detail begins with “I”
+- [x] Remove world-space player hearts and keep health only at the screen edge
+- [x] Simplify the gameplay HUD and selection interface into a cleaner, more minimalist hierarchy
+- [x] Replace awkward portrait-sized upgrade backgrounds with full-screen splash compositions and right-weighted character framing
+- [x] Replace chibi gameplay hunters with slimmer top-down pixel silhouettes closer to the enemy rendering language
+- [x] Replace overly detailed gameplay weapons with smaller, simpler pixel silhouettes that never cover the hunter

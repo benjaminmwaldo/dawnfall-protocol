@@ -22,7 +22,7 @@ const formatTime = (seconds: number) => {
 }
 const FINAL_TRIO_TYPES: BossType[] = ['broodmother', 'graveknight', 'eclipse-eye']
 const ART_BASE = `${import.meta.env.BASE_URL}art/`
-const CHARACTER_ART_INDEX: Record<PlayerConfig['character'], number> = { vesper: 0, cinder: 1, bastion: 2, warden: 3, nyx: 4, tempest: 5, briar: 6, seraph: 7 }
+const CHARACTER_ART_INDEX: Record<Exclude<PlayerConfig['character'], 'rapunsel'>, number> = { vesper: 0, cinder: 1, bastion: 2, warden: 3, nyx: 4, tempest: 5, briar: 6, seraph: 7 }
 const COMPANION_ART_INDEX: Partial<Record<string, number>> = { gravewing: 0, ashkit: 1, 'aegis-hound': 2, 'mercy-moth': 3, shadecat: 4, 'storm-wisp': 5, thornling: 6, sunbird: 7 }
 const WEAPON_ART: Record<PlayerConfig['weapon'], { file: string; columns: number; rows: number; index: number }> = {
   revolver: { file: 'armory-atlas.webp', columns: 3, rows: 2, index: 0 },
@@ -43,7 +43,9 @@ const atlasStyle = (file: string, columns: number, rows: number, index: number) 
   const y = rows === 1 ? 0 : (row / (rows - 1)) * 100
   return `background-image:url('${ART_BASE}${file}');background-size:${columns * 100}% ${rows * 100}%;background-position:${x}% ${y}%;`
 }
-const portraitStyle = (character: PlayerConfig['character']) => atlasStyle('hunter-portraits-v3.webp', 4, 2, CHARACTER_ART_INDEX[character])
+const portraitStyle = (character: PlayerConfig['character']) => character === 'rapunsel'
+  ? `background-image:url('${ART_BASE}rapunsel-portrait.webp');background-size:cover;background-position:center;`
+  : atlasStyle('hunter-portraits-v3.webp', 4, 2, CHARACTER_ART_INDEX[character])
 const mapArtStyle = (mapId: MapId) => atlasStyle('biome-textures-v1.webp', 2, 2, mapById(mapId).textureIndex)
 const stableHash = (key: string): number => {
   let hash = 2166136261
@@ -54,7 +56,9 @@ const stableHash = (key: string): number => {
   return Math.abs(hash)
 }
 const stableArtVariant = (key: string): number => (stableHash(key) % 5) + 1
-const upgradeSceneStyle = (character: PlayerConfig['character'], variant: number) => `background-image:url('${ART_BASE}upgrade-${character}-${variant}.webp');`
+const upgradeSceneStyle = (character: PlayerConfig['character'], variant: number) => character === 'rapunsel'
+  ? `--splash-art:url('${ART_BASE}upgrade-rapunsel-${variant}.webp');--portrait-art:none;`
+  : `--splash-art:url('${ART_BASE}upgrade-backdrop-${variant}.webp');--portrait-art:url('${ART_BASE}upgrade-${character}-${variant}.webp');`
 const recapSceneStyle = (won: boolean, variant: number) => `background-image:url('${ART_BASE}recap-${won ? 'victory' : 'defeat'}-${variant}.webp');`
 const weaponArtStyle = (weapon: PlayerConfig['weapon']) => {
   const art = WEAPON_ART[weapon]
@@ -139,7 +143,7 @@ class DawnfallApp {
   private spectatingId?: string
   private upgradeArtOnly = false
   private readonly inputs = new Map<string, InputState>()
-  private readonly localInput: InputState = { up: false, down: false, left: false, right: false, firing: false, interact: false, aim: 0 }
+  private readonly localInput: InputState = { up: false, down: false, left: false, right: false, firing: false, interact: false, special: false, aim: 0 }
   private readonly audio = new AudioPulse()
   private readonly network: MultiplayerSession
 
@@ -212,7 +216,7 @@ class DawnfallApp {
         <section class="principles" aria-label="Core game mechanics">
           <article><b>01</b><span>ACTIVE COMBAT</span><p>WASD to move. Mouse to aim and fire. Ammunition and reload timing matter.</p></article>
           <article><b>02</b><span>RARE POWER SPIKES</span><p>Squad levels arrive less often, but every perk can transform a hunter's build.</p></article>
-          <article><b>03</b><span>BOSS RELICS</span><p>Slay four night lords to earn the only powers shared by the entire squad.</p></article>
+          <article><b>03</b><span>BOSS RELICS</span><p>Slay eight night lords to earn the only powers shared by the entire squad.</p></article>
         </section>
         <footer class="landing-footer"><span>ORIGINAL BROWSER PROTOTYPE · DESKTOP RECOMMENDED</span><span>NOT AFFILIATED WITH 20 MINUTES TILL DAWN</span></footer>
       </main>
@@ -271,6 +275,7 @@ class DawnfallApp {
   }
 
   private renderLobby() {
+    const enteringLobby = this.screen !== 'lobby'
     this.screen = 'lobby'
     const canStart = this.mode !== 'guest'
     const roomCode = this.network.roomCode
@@ -289,8 +294,9 @@ class DawnfallApp {
                 <button class="selection-card character-card ${this.localConfig.character === character.id ? 'selected' : ''}" data-character="${character.id}" style="--accent:${character.color}">
                   <span class="portrait-art" style="${portraitStyle(character.id)}"></span>
                   <span class="portrait-sigil">${character.glyph}</span>
-                  <span class="card-copy"><small>${character.epithet}</small><strong>${character.name}</strong><em>${character.description}</em><b>${character.baseAbility}</b></span>
+                  <span class="card-copy"><small>${character.epithet}</small><strong>${character.name}</strong><em>${character.description}</em><b>${character.baseAbility}</b><i><kbd>SPACE</kbd> ${character.activeAbility}</i></span>
                 </button>`).join('')}
+              ${Array.from({ length: 3 }, (_, index) => `<article class="selection-card character-card coming-soon" aria-label="Future hunter slot"><span class="future-mark">0${CHARACTERS.length + index + 1}</span><span class="card-copy"><small>THE ROSTER GROWS</small><strong>COMING SOON</strong><em>A new hunter is waiting beyond the dawn.</em></span></article>`).join('')}
             </div>
             <div class="section-heading compact"><span>02</span><div><h2>CHOOSE YOUR WEAPON</h2><p>Every hunter can carry every weapon.</p></div><button class="random-loadout-button" data-random-weapon data-testid="random-weapon">⌁ RANDOM WEAPON</button></div>
             <div class="weapon-grid">
@@ -336,6 +342,7 @@ class DawnfallApp {
       <div class="notice" id="notice" role="status"></div>
     `
     this.bindLobbyEvents()
+    if (enteringLobby) window.scrollTo(0, 0)
   }
 
   private bindLobbyEvents() {
@@ -425,7 +432,7 @@ class DawnfallApp {
           <div class="perks-hud" id="perks-hud"></div>
           <div class="ammo-hud" id="ammo-hud"></div>
           <div class="boss-hud" id="boss-hud"></div>
-          <div class="controls-hud"><span><kbd>WASD</kbd> MOVE</span><span><kbd>MOUSE</kbd> AIM + FIRE</span><span><kbd>E</kbd> REVIVE</span></div>
+          <div class="controls-hud"><span><kbd>WASD</kbd> MOVE</span><span><kbd>MOUSE</kbd> FIRE</span><span><kbd>SPACE</kbd> ABILITY</span><span><kbd>E</kbd> REVIVE</span></div>
           <div class="event-banner" id="event-banner"></div>
           <div class="spectator-hud" id="spectator-hud">
             <button id="spectate-prev" aria-label="Watch previous ally">‹</button>
@@ -460,6 +467,7 @@ class DawnfallApp {
       if (['KeyA', 'ArrowLeft'].includes(event.code)) this.localInput.left = pressed
       if (['KeyD', 'ArrowRight'].includes(event.code)) this.localInput.right = pressed
       if (event.code === 'KeyE' && !localEliminated) this.localInput.interact = pressed
+      if (event.code === 'Space' && !localEliminated) { event.preventDefault(); this.localInput.special = pressed }
     }
     window.onkeydown = (event) => setKey(event, true)
     window.onkeyup = (event) => setKey(event, false)
@@ -524,7 +532,7 @@ class DawnfallApp {
   private inputChanged(next: InputState, previous?: InputState): boolean {
     if (!previous) return true
     if (next.up !== previous.up || next.down !== previous.down || next.left !== previous.left || next.right !== previous.right
-      || next.firing !== previous.firing || next.interact !== previous.interact) return true
+      || next.firing !== previous.firing || next.interact !== previous.interact || next.special !== previous.special) return true
     if (next.viewportWidth !== previous.viewportWidth || next.viewportHeight !== previous.viewportHeight) return true
     const aimDifference = Math.abs(Math.atan2(Math.sin(next.aim - previous.aim), Math.cos(next.aim - previous.aim)))
     return aimDifference > 0.015
@@ -586,12 +594,18 @@ class DawnfallApp {
       const reloadProgress = reloading ? 1 - hudPlayer.reloadRemaining / hudPlayer.reloadDuration : 1
       const regenProgress = Math.max(0, Math.min(1, hudPlayer.heartRegen / HEART_REGEN_SECONDS))
       const regenSeconds = Math.max(1, Math.ceil(HEART_REGEN_SECONDS - hudPlayer.heartRegen))
+      const character = characterById(hudPlayer.character)
+      const specialReady = hudPlayer.specialCooldown <= 0
+      const specialProgress = specialReady ? 1 : 1 - hudPlayer.specialCooldown / Math.max(0.1, character.activeCooldown)
       ammo.innerHTML = `
         <div class="vitals-row" data-testid="player-hearts">
           <div class="vitals-hearts"><small>${localPlayer?.eliminated ? escapeHtml(hudPlayer.name.toUpperCase()) : 'VITALS'}</small>${heartsMarkup(hudPlayer.health, hudPlayer.maxHealth, 'player-hearts')}</div>
           <div class="regen-readout" title="One heart regenerates every minute"><span class="regen-ring" style="--regen-progress:${regenProgress * 360}deg"><i class="regen-heart">♥</i></span><b>${regenSeconds}s</b><small>REGEN</small></div>
         </div>
-        <div class="weapon-readout"><small>${weapon.name.toUpperCase()}</small><strong>${weapon.infiniteAmmo ? '∞' : reloading ? 'RELOAD' : `${hudPlayer.ammo} / ${hudPlayer.maxAmmo}`}</strong><i><em style="width:${reloadProgress * 100}%"></em></i></div>`
+        <div class="combat-readouts">
+          <div class="weapon-readout"><small>${weapon.name.toUpperCase()}</small><strong>${weapon.infiniteAmmo ? '∞' : reloading ? 'RELOAD' : `${hudPlayer.ammo} / ${hudPlayer.maxAmmo}`}</strong><i><em style="width:${reloadProgress * 100}%"></em></i></div>
+          <div class="special-readout ${specialReady ? 'ready' : ''}" style="--special-progress:${Math.max(0, Math.min(1, specialProgress)) * 360}deg;--accent:${character.color}"><kbd>SPACE</kbd><span><small>${character.activeAbility.split(' — ')[0].toUpperCase()}</small><strong>${specialReady ? 'READY' : `${hudPlayer.specialCooldown.toFixed(1)}s`}</strong></span></div>
+        </div>`
     }
 
     const finaleBosses = snapshot.enemies.filter((enemy) => enemy.finale && enemy.health > 0)
@@ -652,7 +666,7 @@ class DawnfallApp {
     overlay.classList.add('visible')
     overlay.classList.toggle('art-only', this.upgradeArtOnly)
     overlay.innerHTML = `
-      <div class="upgrade-scene" data-art-variant="${sceneVariant}" role="img" aria-label="${sceneHunter.name} in a playful alternate setting" style="${upgradeSceneStyle(sceneCharacter, sceneVariant)}"><span>${sceneHunter.name.toUpperCase()} · A LIFE BEYOND THE NIGHT</span></div>
+      <div class="upgrade-scene" data-character="${sceneCharacter}" data-art-variant="${sceneVariant}" role="img" aria-label="${sceneHunter.name} in a playful alternate setting" style="${upgradeSceneStyle(sceneCharacter, sceneVariant)}"><span>${sceneHunter.name.toUpperCase()} · A LIFE BEYOND THE NIGHT</span></div>
       <div class="upgrade-backdrop"></div>
       <button class="art-view-button" data-art-view aria-pressed="${this.upgradeArtOnly}">${this.upgradeArtOnly ? '↩ RETURN TO CHOICES' : '⛶ VIEW FULL ART'}</button>
       <aside class="personality-note"><small>GETTING TO KNOW ${sceneHunter.name.toUpperCase()}</small><p>${escapeHtml(personality)}</p><b>${(stableHash(`${snapshot.seed}:${offer.level}:${sceneCharacter}:personality`) % 50) + 1} / 50</b></aside>

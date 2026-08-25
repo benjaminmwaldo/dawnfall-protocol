@@ -10,7 +10,7 @@ import type { InputState, PlayerConfig } from '../src/game/types'
 const player: PlayerConfig = {
   id: 'test-player', name: 'Tester', character: 'vesper', weapon: 'revolver', color: '#f2d479',
 }
-const idle: InputState = { up: false, down: false, left: false, right: false, firing: false, interact: false, aim: 0 }
+const idle: InputState = { up: false, down: false, left: false, right: false, firing: false, interact: false, special: false, aim: 0 }
 const clearDraftInputDelay = (engine: GameEngine, inputs: ReadonlyMap<string, InputState>) => {
   for (let tick = 0; tick < 11; tick += 1) engine.step(0.05, inputs)
 }
@@ -319,6 +319,53 @@ describe('GameEngine', () => {
     expect(hunter.health).toBe(HEART_VALUE * 5)
   })
 
+  it('fires Rapunsel’s circular hair slash from the shared Space input', () => {
+    const engine = new GameEngine([{ ...player, character: 'rapunsel' }], 240, 1_207)
+    const hunter = engine.snapshot.players[0]
+    engine.snapshot.enemies.push({
+      id: 91_207, type: 'bulwark', x: hunter.x + 80, y: hunter.y, vx: 0, vy: 0,
+      health: 500, maxHealth: 500, radius: 23, speed: 0, damage: 0, attackCooldown: 9,
+      burn: 0, burnTick: 0.5, slow: 0, phase: 0,
+    })
+    engine.step(0.05, new Map([[player.id, { ...idle, special: true }]]))
+    expect(engine.snapshot.enemies[0].health).toBeLessThan(500)
+    expect(hunter.specialCooldown).toBeGreaterThan(7)
+    expect(hunter.specialPulse).toBeGreaterThan(0)
+  })
+
+  it('keeps kill-based lifesteal to small fractions of a heart', () => {
+    const engine = new GameEngine([{ ...player, character: 'briar', weapon: 'sword' }], 240, 1_208)
+    const hunter = engine.snapshot.players[0]
+    hunter.health = HEART_VALUE * 2
+    hunter.perks.bloodbloom = 1
+    hunter.perks['blood-edge'] = 1
+    const target = {
+      id: 91_208, type: 'thrall' as const, x: 80, y: 0, vx: 0, vy: 0,
+      health: 1, maxHealth: 1, radius: 13, speed: 0, damage: 0, attackCooldown: 9,
+      burn: 0, burnTick: 0.5, slow: 0, phase: 0,
+    }
+    engine.snapshot.enemies.push(target)
+    const healthBefore = hunter.health
+    ;(engine as unknown as { damageEnemy(enemy: typeof target, amount: number, ownerId: string): void }).damageEnemy(target, 2, hunter.id)
+    expect(hunter.health - healthBefore).toBeGreaterThan(0)
+    expect(hunter.health - healthBefore).toBeLessThan(1)
+  })
+
+  it('keeps common Combustion eruptions modest', () => {
+    const engine = new GameEngine([player], 240, 1_209)
+    const hunter = engine.snapshot.players[0]
+    hunter.perks.combustion = 1
+    const burning = {
+      id: 91_209, type: 'thrall' as const, x: 80, y: 0, vx: 0, vy: 0,
+      health: 1, maxHealth: 1, radius: 13, speed: 0, damage: 0, attackCooldown: 9,
+      burn: 1, burnTick: 0.5, burnOwner: hunter.id, slow: 0, phase: 0,
+    }
+    const nearby = { ...burning, id: 91_210, x: 120, health: 100, maxHealth: 100, burnOwner: undefined }
+    engine.snapshot.enemies.push(burning, nearby)
+    ;(engine as unknown as { damageEnemy(enemy: typeof burning, amount: number, ownerId: string): void }).damageEnemy(burning, 2, hunter.id)
+    expect(nearby.health).toBe(84)
+  })
+
   it('regenerates one personal heart every minute', () => {
     const engine = new GameEngine([player], 240, 322)
     const hunter = engine.snapshot.players[0]
@@ -421,8 +468,13 @@ describe('GameEngine', () => {
     for (const character of CHARACTERS) {
       expect(PERSONALITY_FACTS[character.id]).toHaveLength(50)
       expect(new Set(PERSONALITY_FACTS[character.id]).size).toBe(50)
+      expect(PERSONALITY_FACTS[character.id].every((fact) => /^I(?:\b|['’])/.test(fact))).toBe(true)
     }
-    expect(PERSONALITY_FACTS.cinder.filter((fact) => /climate|human-rights|protest|march|mutual-aid|vote|justice|community|refugee/i.test(fact)).length).toBeGreaterThanOrEqual(15)
+    const scarletCivicFacts = PERSONALITY_FACTS.cinder.filter((fact) => /climate|human-rights|protest|march|mutual-aid|vote|justice|community|refugee/i.test(fact)).length
+    expect(scarletCivicFacts).toBeGreaterThanOrEqual(4)
+    expect(scarletCivicFacts).toBeLessThan(15)
+    expect(PERSONALITY_FACTS.cinder.some((fact) => /single|dating/i.test(fact))).toBe(true)
+    expect(PERSONALITY_FACTS.cinder.some((fact) => /dad/i.test(fact))).toBe(true)
   })
 
   it('spawns every ambient enemy beyond every living player viewport', () => {
@@ -448,12 +500,16 @@ describe('GameEngine', () => {
     }
   })
 
-  it('gives each boss a distinct dash, barrage, and reinforcement pattern', () => {
+  it('gives all eight bosses distinct barrages, movement powers, and reinforcement patterns', () => {
     const patterns = [
-      { type: 'tollkeeper' as const, hostileShots: 15, adds: 3 },
-      { type: 'broodmother' as const, hostileShots: 10, adds: 7 },
-      { type: 'graveknight' as const, hostileShots: 12, adds: 3 },
-      { type: 'eclipse-eye' as const, hostileShots: 21, adds: 4 },
+      { type: 'tollkeeper' as const, hostileShots: 15, adds: 3, dashes: true },
+      { type: 'broodmother' as const, hostileShots: 10, adds: 7, dashes: true },
+      { type: 'graveknight' as const, hostileShots: 12, adds: 3, dashes: true },
+      { type: 'eclipse-eye' as const, hostileShots: 21, adds: 4, dashes: true },
+      { type: 'void-hart' as const, hostileShots: 15, adds: 3, dashes: true },
+      { type: 'prism-witch' as const, hostileShots: 27, adds: 4, dashes: false },
+      { type: 'iron-choir' as const, hostileShots: 36, adds: 5, dashes: false },
+      { type: 'star-eater' as const, hostileShots: 60, adds: 4, dashes: false },
     ]
     for (const pattern of patterns) {
       const engine = new GameEngine([player], 240, 500 + pattern.hostileShots)
@@ -465,16 +521,16 @@ describe('GameEngine', () => {
       })
       engine.step(0.05, new Map([[player.id, { ...idle, viewportWidth: 1280, viewportHeight: 720 }]]))
       const boss = engine.snapshot.enemies.find((enemy) => enemy.type === pattern.type)!
-      expect(boss.dashRemaining).toBeGreaterThan(0)
+      if (pattern.dashes) expect(boss.dashRemaining).toBeGreaterThan(0)
       expect(engine.snapshot.projectiles.filter((projectile) => projectile.enemy)).toHaveLength(pattern.hostileShots)
       expect(engine.snapshot.enemies.filter((enemy) => enemy.id !== boss.id)).toHaveLength(pattern.adds)
     }
   })
 
-  it('schedules four distinct bosses and turns each kill into a squad relic', () => {
+  it('schedules seven pre-finale bosses and turns each kill into a squad relic', () => {
     const engine = new GameEngine([player], 240, 707)
-    const milestones = [0.25, 0.49, 0.72, 0.9]
-    const expectedBosses = ['tollkeeper', 'broodmother', 'graveknight', 'eclipse-eye']
+    const milestones = [0.125, 0.245, 0.365, 0.485, 0.605, 0.715, 0.815]
+    const expectedBosses = ['void-hart', 'tollkeeper', 'prism-witch', 'broodmother', 'iron-choir', 'graveknight', 'star-eater']
     for (let index = 0; index < milestones.length; index += 1) {
       engine.snapshot.timeRemaining = engine.snapshot.duration * (1 - milestones[index])
       engine.step(1 / 60, new Map([[player.id, idle]]))
@@ -489,7 +545,7 @@ describe('GameEngine', () => {
       engine.step(1 / 60, new Map([[player.id, idle]]))
       expect(engine.snapshot.enemies.some((enemy) => enemy.type === expectedBosses[index])).toBe(false)
     }
-    expect(Object.keys(engine.snapshot.teamBuffs)).toHaveLength(4)
+    expect(Object.keys(engine.snapshot.teamBuffs)).toHaveLength(7)
     expect(engine.snapshot.players[0].awakened).toBe(true)
   })
 

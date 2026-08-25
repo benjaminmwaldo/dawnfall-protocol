@@ -1,6 +1,6 @@
 import type { CharacterId } from './types'
 
-export const PERSONALITY_FACTS: Record<CharacterId, readonly string[]> = {
+const RAW_PERSONALITY_FACTS: Record<CharacterId, readonly string[]> = {
   vesper: [
     'Vesper alphabetizes her tea collection by mood.',
     'She can peel an apple in one unbroken spiral.',
@@ -54,56 +54,56 @@ export const PERSONALITY_FACTS: Record<CharacterId, readonly string[]> = {
     'Her rare days off begin with cinnamon toast.',
   ],
   cinder: [
-    'Scarlet hand-paints signs for every climate march.',
-    'She never misses the local human-rights fundraiser.',
-    'Her canvas tote is covered in protest pins.',
-    'She volunteers at a neighborhood mutual-aid pantry.',
-    'Scarlet brings extra sunscreen to outdoor rallies.',
-    'She can turn any jacket into an upcycled favorite.',
-    'Her climate-justice ideal has trains, trees, and safe sidewalks.',
-    'She reads climate policy over spicy breakfast tacos.',
-    'Scarlet always knows where the next march begins.',
-    'She writes representatives with startling frequency.',
-    'Her favorite posters demand dignity for everyone.',
-    'She organizes coat drives before the first frost.',
-    'Scarlet believes good trouble needs good snacks.',
-    'She keeps reusable cups in every possible bag.',
-    'Her balcony is a tiny pollinator garden.',
-    'She loves union-made coffee and very loud music.',
-    'Scarlet teaches friends how to register to vote.',
-    'She can explain carbon pricing at a dinner party.',
-    'Her favorite color is protest-poster red.',
-    'She donates birthday money to refugee support groups.',
-    'Scarlet carries chalk for spontaneous sidewalk messages.',
-    'She helps newcomers feel welcome at every meeting.',
-    'Her dream date ends at a community art show.',
-    'She cries at successful human-rights lawsuits.',
-    'Scarlet grows herbs in repurposed soup cans.',
-    'She has strong opinions about protected bike lanes.',
-    'Her favorite dessert is fair-trade chocolate cake.',
-    'She shares petitions, then actually does the follow-up.',
-    'Scarlet owns twelve bandanas and lends all of them.',
-    'She spends Saturdays cleaning trails with friends.',
-    'Her playlists alternate protest songs and bubblegum pop.',
-    'She brings hand warmers to winter demonstrations.',
-    'Scarlet can screen-print protest shirts after midnight.',
-    'She celebrates every small local election victory.',
-    'Her fridge is crowded with community-event flyers.',
-    'She makes excellent vegetarian chili for volunteers.',
-    'Scarlet insists every meeting include accessible seating.',
-    'She keeps a little library beside her front door.',
-    'Her favorite holiday tradition is a charity fun run.',
-    'She sends thank-you notes to public-school teachers.',
-    'Scarlet loves documentaries about ordinary organizers.',
-    'She knows which brands repair instead of replace.',
-    'Her dream is to restore a neglected city park.',
-    'She carries spare menstrual products for anyone asking.',
-    'Scarlet never lets a cruel joke pass unchallenged.',
-    'She makes friendship bracelets in movement colors.',
-    'Her proudest skill is turning outrage into a plan.',
-    'She believes hope works best with a clipboard.',
-    'Scarlet relaxes by watching tiny baking videos.',
-    'After every rally, she buys everyone ice cream.',
+    'I live alone in a tiny apartment where the city never quite goes quiet.',
+    'I am single, and my friends are much more invested in that fact than I am.',
+    'I call my dad every Sunday even when we are still annoyed with each other.',
+    'I once stopped speaking to my dad for a week over an argument about my career.',
+    'I make up with my dad by sending him photos of meals I know he would like.',
+    'I keep three emergency outfits hanging on the back of my bedroom door.',
+    'I know which late-night diner has the best spicy breakfast tacos.',
+    'I can turn almost any old jacket into something I would wear again.',
+    'I grow basil, mint, and one stubborn tomato plant on my fire escape.',
+    'I love very loud music when I am cleaning my apartment.',
+    'I have a canvas tote covered in pins from places and causes I care about.',
+    'I volunteer at the neighborhood pantry when my schedule allows it.',
+    'I prefer trains, trees, and streets where people can actually walk safely.',
+    'I write my representatives when an issue keeps me awake.',
+    'I bring extra sunscreen whenever friends plan something outdoors.',
+    'I organize a coat drive before the first cold weekend every year.',
+    'I believe a good cause still needs good snacks.',
+    'I keep reusable cups in more bags than I can remember owning.',
+    'I teach friends how to register to vote without turning dinner into a lecture.',
+    'I donate a little of every birthday check to a local refugee-support group.',
+    'I have strong opinions about bike lanes but save them for people who ask.',
+    'I never let a cruel joke sit comfortably in the room.',
+    'I would love to help restore the neglected park near my building.',
+    'I relax by watching tiny baking videos in bed.',
+    'I make excellent vegetarian chili and terrible rice.',
+    'I own twelve bandanas and somehow lend out all twelve.',
+    'I spend some Saturdays cleaning trails with friends.',
+    'I alternate old protest songs with shameless bubblegum pop.',
+    'I have a favorite bookstore cashier who always saves recommendations for me.',
+    'I order the same drink at my corner café and pretend it is adventurous.',
+    'I keep a little library shelf beside my apartment door.',
+    'I love documentaries, romantic comedies, and aggressively bad reality television.',
+    'I buy flowers for myself whenever the week has been difficult.',
+    'I wear red lipstick when I need to feel braver than I am.',
+    'I have cried on the subway and survived the embarrassment.',
+    'I text my friends when I get home because they refuse to stop asking.',
+    'I make friendship bracelets during long phone calls.',
+    'I know exactly which rooftop has the best view of the city lights.',
+    'I keep spare shoes under my desk for walking home.',
+    'I am trying to learn how to cook my dad’s soup without calling him for help.',
+    'I keep community-event flyers on my fridge beside takeout menus.',
+    'I love the strange quiet that arrives just before the morning trains begin.',
+    'I always have a book in my bag and rarely finish it on time.',
+    'I celebrate small victories with ice cream from the shop downstairs.',
+    'I can screen-print a decent shirt after midnight.',
+    'I send thank-you notes when someone makes my neighborhood feel kinder.',
+    'I want a relationship someday, but I am not interested in forcing one.',
+    'I have deleted and reinstalled the same dating app more than once.',
+    'I turn frustration into lists because lists make everything feel possible.',
+    'I think hope works best when somebody remembers to bring a clipboard.',
   ],
   bastion: [
     'Bastion bakes bread sturdy enough for any journey.',
@@ -417,7 +417,109 @@ export const PERSONALITY_FACTS: Record<CharacterId, readonly string[]> = {
     'Seraph ends letters with a tiny drawn sun.',
     'Her best ideas arrive during long morning walks.',
   ],
+  rapunsel: [
+    'I braid my hair differently whenever I need a fresh start.',
+    'I am an adult, but I still order the dessert with the tiny paper umbrella.',
+    'I keep ribbon in every coat pocket just in case.',
+    'I love strawberry milk and cinnamon toast.',
+    'I can sit on my hair if I forget where I left the end of it.',
+    'I apologize to furniture when my braid knocks something over.',
+    'I collect illustrated fairy tales with ridiculous endings.',
+    'I like soft sweaters with sleeves that cover my hands.',
+    'I have learned forty-seven different kinds of braid.',
+    'I spend quiet afternoons sketching people in cafés.',
+    'I always carry extra hair ties for everyone else.',
+    'I prefer window seats, especially when it is raining.',
+    'I bake tiny cakes because large cakes feel too serious.',
+    'I love yellow flowers growing in unexpected places.',
+    'I talk to my hair when it refuses to cooperate.',
+    'I have a favorite comb carved from pear wood.',
+    'I wear simple dresses so my braid can be the dramatic part.',
+    'I can fall asleep almost anywhere if there is a warm blanket.',
+    'I keep pressed daisies inside my recipe book.',
+    'I enjoy picnics even when the wind ruins everything.',
+    'I sing quietly while untangling knots.',
+    'I love small dogs with enormous confidence.',
+    'I make excellent honey biscuits.',
+    'I prefer gentle colors and very strong tea.',
+    'I laugh whenever someone underestimates how heavy my hair is.',
+    'I have never found a hat that truly works.',
+    'I keep my room neat except for one impossible chair of clothes.',
+    'I like museums with costume exhibits.',
+    'I can weave a flower crown without looking down.',
+    'I save pretty wrapping paper for future projects.',
+    'I own a tiny silver mirror that belonged to my grandmother.',
+    'I love the first warm afternoon after winter.',
+    'I send voice messages because my hands are usually busy braiding.',
+    'I make playlists with names that sound like story chapters.',
+    'I am shy at large parties and fearless at small dinners.',
+    'I order peach tea whenever it is on the menu.',
+    'I enjoy sewing pockets into dresses that should have had them already.',
+    'I know how to turn a bad hair day into a defensive weapon.',
+    'I keep a notebook of places I want to visit by train.',
+    'I love earrings shaped like little moons.',
+    'I can remember a compliment for years.',
+    'I would rather receive a handwritten note than an expensive gift.',
+    'I wear my longest braid when I need courage.',
+    'I like watching storms from a safely covered balcony.',
+    'I always save the softest pillow for a guest.',
+    'I have a weakness for miniature pastries.',
+    'I relax by brushing my hair exactly one hundred strokes.',
+    'I believe kindness should feel practical, not performative.',
+    'I dream of a bright apartment with very high ceilings.',
+    'I end difficult days by braiding one small flower into my hair.',
+  ],
 }
+
+const CHARACTER_NAMES: Record<CharacterId, string> = {
+  vesper: 'Vesper', cinder: 'Scarlet', bastion: 'Bastion', warden: 'Warden', nyx: 'Nyx',
+  tempest: 'Tempest', briar: 'Briar', seraph: 'Seraph', rapunsel: 'Rapunsel',
+}
+
+const FIRST_PERSON_ADVERBS = new Set(['always', 'never', 'secretly', 'deeply', 'quietly', 'usually', 'really', 'once', 'also', 'just'])
+const firstPersonVerb = (word: string): string => {
+  const punctuation = word.match(/[.,;:!?]+$/)?.[0] ?? ''
+  const bare = word.slice(0, word.length - punctuation.length)
+  const lower = bare.toLowerCase()
+  const irregular: Record<string, string> = { is: 'am', has: 'have', does: 'do', goes: 'go' }
+  let next = irregular[lower] ?? bare
+  if (!irregular[lower] && !['can', 'could', 'would', 'should', 'will', 'may', 'might', 'must'].includes(lower)) {
+    if (/ies$/i.test(bare)) next = `${bare.slice(0, -3)}y`
+    else if (/(ches|shes|xes|zes|oes|sses)$/i.test(bare)) next = bare.slice(0, -2)
+    else if (/s$/i.test(bare) && !/ss$/i.test(bare)) next = bare.slice(0, -1)
+  }
+  return `${next}${punctuation}`
+}
+
+const replaceInternalPronouns = (text: string): string => text
+  .replace(/\b[Ss]he\s+([A-Za-z-]+)/g, (_match, verb: string) => `I ${firstPersonVerb(verb)}`)
+  .replace(/\b[Hh]erself\b/g, 'myself')
+  .replace(/\b[Hh]er\b/g, 'my')
+
+const toFirstPerson = (character: CharacterId, fact: string): string => {
+  if (/^I(?:\b|['’])/.test(fact)) return fact
+  const name = CHARACTER_NAMES[character]
+  const subject = new RegExp(`^(?:${name}|She)\\s+`)
+  if (subject.test(fact)) {
+    const words = replaceInternalPronouns(fact.replace(subject, '')).split(' ')
+    let verbIndex = 0
+    while (verbIndex < words.length - 1 && FIRST_PERSON_ADVERBS.has(words[verbIndex].toLowerCase().replace(/[^a-z]/g, ''))) verbIndex += 1
+    words[verbIndex] = firstPersonVerb(words[verbIndex])
+    return `I ${words.join(' ')}`
+  }
+  const possessive = fact
+    .replace(new RegExp(`^${name}[’']s\\s+`), 'my ')
+    .replace(/^Her\s+/, 'my ')
+  const converted = replaceInternalPronouns(possessive)
+  return `I'll admit, ${converted.charAt(0).toLowerCase()}${converted.slice(1)}`
+}
+
+export const PERSONALITY_FACTS: Record<CharacterId, readonly string[]> = Object.fromEntries(
+  (Object.keys(RAW_PERSONALITY_FACTS) as CharacterId[]).map((character) => [
+    character,
+    RAW_PERSONALITY_FACTS[character].map((fact) => toFirstPerson(character, fact)),
+  ]),
+) as unknown as Record<CharacterId, readonly string[]>
 
 export const personalityFact = (character: CharacterId, seed: number): string => {
   const facts = PERSONALITY_FACTS[character]

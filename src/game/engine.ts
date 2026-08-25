@@ -19,15 +19,20 @@ import type {
   StructureState,
 } from './types'
 
-const EMPTY_INPUT: InputState = { up: false, down: false, left: false, right: false, firing: false, interact: false, aim: 0 }
+const EMPTY_INPUT: InputState = { up: false, down: false, left: false, right: false, firing: false, interact: false, special: false, aim: 0 }
 const DRAFT_INPUT_DELAY = 0.5
 const SPAWN_PADDING = 110
+const TAU = Math.PI * 2
 const HIT_INVULNERABILITY = 0.42
 const KINETIC_SHELL_BONUS = 0.28
 const BOSS_SCHEDULE: Array<{ at: number; type: BossType }> = [
-  { at: 0.25, type: 'tollkeeper' },
-  { at: 0.49, type: 'broodmother' },
-  { at: 0.72, type: 'graveknight' },
+  { at: 0.12, type: 'void-hart' },
+  { at: 0.24, type: 'tollkeeper' },
+  { at: 0.36, type: 'prism-witch' },
+  { at: 0.48, type: 'broodmother' },
+  { at: 0.60, type: 'iron-choir' },
+  { at: 0.71, type: 'graveknight' },
+  { at: 0.81, type: 'star-eater' },
 ]
 const FINAL_ENCOUNTER_AT = 0.88
 const FINAL_TRIO: BossType[] = ['broodmother', 'graveknight', 'eclipse-eye']
@@ -210,6 +215,9 @@ export class GameEngine {
       reloadRemaining: 0,
       reloadDuration: weapon.reload,
       fireCooldown: 0,
+      specialCooldown: 0,
+      specialPulse: 0,
+      specialHeld: false,
       invulnerable: 0,
       downed: false,
       eliminated: false,
@@ -242,6 +250,8 @@ export class GameEngine {
     for (const player of this.snapshot.players) {
       player.invulnerable = Math.max(0, player.invulnerable - dt)
       player.fireCooldown = Math.max(0, player.fireCooldown - dt)
+      player.specialCooldown = Math.max(0, player.specialCooldown - dt)
+      player.specialPulse = Math.max(0, player.specialPulse - dt)
       player.hasteRemaining = Math.max(0, player.hasteRemaining - dt)
       if (player.eliminated) continue
       if (player.downed) {
@@ -265,6 +275,8 @@ export class GameEngine {
 
       const input = inputs.get(player.id) ?? EMPTY_INPUT
       player.aim = Number.isFinite(input.aim) ? input.aim : player.aim
+      if (input.special && !player.specialHeld && player.specialCooldown <= 0) this.activateSpecial(player)
+      player.specialHeld = input.special
       let moveX = Number(input.right) - Number(input.left)
       let moveY = Number(input.down) - Number(input.up)
       const magnitude = Math.hypot(moveX, moveY) || 1
@@ -274,6 +286,7 @@ export class GameEngine {
       const lastStand = rank(player, 'iron-heart') > 0 && player.health <= player.maxHealth * 0.5
       const moveMultiplier = Math.pow(1.25, rank(player, 'fleetfoot'))
         * Math.pow(1.12, this.snapshot.teamBuffs['eclipse-stride'] ?? 0)
+        * Math.pow(1.08, this.snapshot.teamBuffs['hart-stride'] ?? 0)
         * (burningNearby ? 1.35 : 1)
         * (lastStand ? 1.2 : 1)
         * (player.hasteRemaining > 0 ? 1.22 : 1)
@@ -305,6 +318,89 @@ export class GameEngine {
         + (player.character === 'seraph' ? rank(player, 'dawn-armor') * 1.5 : 0)
       if (regeneration > 0) player.health = Math.min(player.maxHealth, player.health + dt * regeneration)
     }
+  }
+
+  private activateSpecial(player: PlayerState) {
+    const definition = characterById(player.character)
+    const cooldownMultiplier = (player.character === 'rapunsel' && rank(player, 'quick-braid') > 0 ? 0.6 : 1)
+      * Math.pow(0.9, this.snapshot.teamBuffs['star-hour'] ?? 0)
+    player.specialCooldown = definition.activeCooldown * cooldownMultiplier
+    player.specialPulse = player.character === 'rapunsel' ? 0.72 : 0.52
+    const livingEnemies = () => this.snapshot.enemies.filter((enemy) => enemy.health > 0)
+
+    if (player.character === 'vesper') {
+      const targets = livingEnemies()
+        .sort((a, b) => distanceSquared(player.x, player.y, a.x, a.y) - distanceSquared(player.x, player.y, b.x, b.y))
+        .slice(0, player.awakened ? 8 : 5)
+      for (const target of targets) this.damageEnemy(target, player.awakened ? 150 : 110, player.id)
+    }
+
+    if (player.character === 'cinder') {
+      for (const enemy of livingEnemies().filter((target) => distanceSquared(player.x, player.y, target.x, target.y) <= 185 * 185)) {
+        enemy.burn = Math.max(enemy.burn, 4)
+        enemy.burnOwner = player.id
+        this.damageEnemy(enemy, 62, player.id)
+      }
+    }
+
+    if (player.character === 'bastion') {
+      for (const enemy of livingEnemies().filter((target) => distanceSquared(player.x, player.y, target.x, target.y) <= 175 * 175)) this.damageEnemy(enemy, 78, player.id)
+      for (const ally of this.snapshot.players.filter((target) => !target.downed && !target.eliminated && distanceSquared(player.x, player.y, target.x, target.y) <= 230 * 230)) {
+        ally.invulnerable = Math.max(ally.invulnerable, 1.6)
+      }
+    }
+
+    if (player.character === 'warden') {
+      for (const ally of this.snapshot.players.filter((target) => !target.downed && !target.eliminated)) this.heal(ally, HEART_VALUE)
+    }
+
+    if (player.character === 'nyx') {
+      this.moveCircle(player, Math.cos(player.aim) * 145, Math.sin(player.aim) * 145, 11)
+      player.invulnerable = Math.max(player.invulnerable, 2)
+      player.hasteRemaining = Math.max(player.hasteRemaining, 2)
+    }
+
+    if (player.character === 'tempest') {
+      const targets = livingEnemies()
+        .sort((a, b) => distanceSquared(player.x, player.y, a.x, a.y) - distanceSquared(player.x, player.y, b.x, b.y))
+        .slice(0, player.awakened ? 12 : 8)
+      for (const target of targets) {
+        target.slow = Math.max(target.slow, 2)
+        this.damageEnemy(target, 86, player.id)
+      }
+    }
+
+    if (player.character === 'briar') {
+      const targets = livingEnemies().filter((target) => distanceSquared(player.x, player.y, target.x, target.y) <= 165 * 165)
+      for (const target of targets) this.damageEnemy(target, 76, player.id)
+      this.heal(player, Math.min(HEART_VALUE, targets.length * 2.5))
+    }
+
+    if (player.character === 'seraph') {
+      for (let ray = 0; ray < 12; ray += 1) {
+        const angle = player.aim + (ray / 12) * Math.PI * 2
+        this.snapshot.projectiles.push({
+          id: this.entityId++, ownerId: player.id, x: player.x, y: player.y,
+          vx: Math.cos(angle) * 560, vy: Math.sin(angle) * 560,
+          radius: 6, damage: player.awakened ? 78 : 58, life: 0.8, pierce: player.awakened ? 3 : 1,
+          bounces: 0, enemy: false, chain: 0, burn: false, color: '#ffd783',
+        })
+      }
+    }
+
+    if (player.character === 'rapunsel') {
+      const radius = 128 * (rank(player, 'silken-radius') > 0 ? 1.5 : 1)
+      const damage = 94 * (rank(player, 'silken-radius') > 0 ? 1.35 : 1)
+      const echoes = player.awakened || rank(player, 'thousand-strands') > 0 ? 2 : 1
+      const before = player.kills
+      for (let echo = 0; echo < echoes; echo += 1) {
+        for (const enemy of livingEnemies().filter((target) => distanceSquared(player.x, player.y, target.x, target.y) <= radius * radius)) this.damageEnemy(enemy, damage, player.id)
+      }
+      if (rank(player, 'silk-guard') > 0) player.invulnerable = Math.max(player.invulnerable, 2)
+      if (rank(player, 'braided-heart') > 0) this.heal(player, Math.min(HEART_VALUE, Math.max(0, player.kills - before) * HEART_VALUE * 0.1))
+    }
+
+    this.pushEvent('buff', player.x, player.y, `${player.name.toUpperCase()} · ${definition.activeAbility.split(' — ')[0].toUpperCase()}`)
   }
 
   private resolveUnrevivablePlayers() {
@@ -362,7 +458,7 @@ export class GameEngine {
       const damagePenalty = Math.pow(0.88, rank(player, 'double-tap')) * Math.pow(0.92, rank(player, 'twin-fangs')) * Math.pow(0.72, rank(player, 'echo-rail'))
       const lastStand = rank(player, 'iron-heart') > 0 && player.health <= player.maxHealth * 0.5
       const funeralLoad = player.weapon === 'scattergun' && rank(player, 'funeral-load') > 0 && player.shotCount % 4 === 0
-      const baseDamage = weapon.damage
+      const baseDamage = weapon.damage * Math.pow(1.1, this.snapshot.teamBuffs['prism-edge'] ?? 0)
         * Math.pow(1.45, rank(player, 'heavy-caliber'))
         * Math.pow(1.18, rank(player, 'longshot'))
         * Math.pow(1.3, rank(player, 'veilshot'))
@@ -448,7 +544,7 @@ export class GameEngine {
       companion.aim = Math.atan2(target.y - companion.y, target.x - companion.x)
       if (companion.attackCooldown > 0) continue
       if (companion.kind === 'mercy-moth') this.heal(owner, 3)
-      if (companion.kind === 'thornling') this.heal(owner, 2)
+      if (companion.kind === 'thornling') this.heal(owner, 0.5)
       const projectile: ProjectileState = {
         id: this.entityId++, ownerId: owner.id, x: companion.x, y: companion.y,
         vx: Math.cos(companion.aim) * attack.speed, vy: Math.sin(companion.aim) * attack.speed,
@@ -585,6 +681,10 @@ export class GameEngine {
       broodmother: { hp: 5000, radius: 62, speed: 34, damage: HEART_VALUE },
       graveknight: { hp: 5900, radius: 60, speed: 42, damage: HEART_VALUE + HALF_HEART_VALUE },
       'eclipse-eye': { hp: 6800, radius: 64, speed: 36, damage: HEART_VALUE },
+      'void-hart': { hp: 4700, radius: 61, speed: 44, damage: HEART_VALUE + HALF_HEART_VALUE },
+      'prism-witch': { hp: 5300, radius: 59, speed: 38, damage: HEART_VALUE },
+      'iron-choir': { hp: 6500, radius: 68, speed: 27, damage: HEART_VALUE + HALF_HEART_VALUE },
+      'star-eater': { hp: 7200, radius: 66, speed: 34, damage: HEART_VALUE + HALF_HEART_VALUE },
     }
     const base = stats[type]
     const scale = isBoss(type) ? bossScale * (finale ? FINAL_BOSS_HEALTH_MULTIPLIER : 1) : regularScale
@@ -626,7 +726,7 @@ export class GameEngine {
         enemy.burnTick -= dt
         if (enemy.burnTick <= 0) {
           const owner = this.snapshot.players.find((player) => player.id === enemy.burnOwner)
-          const burnDamage = (5 + rank(owner, 'combustion') * 9) * Math.pow(2.2, rank(owner, 'white-flame'))
+          const burnDamage = (5 + rank(owner, 'combustion') * 4) * Math.pow(2.2, rank(owner, 'white-flame'))
           this.damageEnemy(enemy, burnDamage, enemy.burnOwner)
           enemy.burnTick = 0.5
         }
@@ -729,9 +829,92 @@ export class GameEngine {
         }
       }
 
+      if (enemy.type === 'void-hart') {
+        if (enemy.attackCooldown <= 0 && hasSight && distance < 920) {
+          for (let shot = 0; shot < 8 + volleyBonus; shot += 1) {
+            const heavy = shot % 3 === 0
+            this.spawnEnemyProjectile(enemy, shot / (8 + volleyBonus) * TAU + enemy.phase * 0.35, 150, heavy ? HEART_VALUE : HALF_HEART_VALUE, '#48e1d0', heavy ? 10 : 6.5)
+          }
+          enemy.attackCooldown = 2.7 * bossCadence
+        }
+        if ((enemy.abilityCooldown ?? 0) <= 0) {
+          enemy.dashAngle = targetAngle
+          enemy.dashRemaining = 1.15
+          enemy.abilityCooldown = 4.8 * bossCadence
+          for (let wake = -3; wake <= 3; wake += 1) this.spawnEnemyProjectile(enemy, targetAngle + Math.PI / 2 + wake * 0.16, 92, HEART_VALUE, '#28bbae', 9)
+        }
+        if ((enemy.summonCooldown ?? 0) <= 0) {
+          this.summonBossAdds(['charger', 'charger', 'wraith'], inputs)
+          enemy.summonCooldown = 7.4 * bossCadence
+        }
+      }
+
+      if (enemy.type === 'prism-witch') {
+        if (hasSight) angle = targetAngle + (enemy.strafeDirection ?? 1) * 1.35
+        const prism = ['#ff5f74', '#ffb454', '#f4e56b', '#6fe0ac', '#69bfff', '#c982ff']
+        if (enemy.attackCooldown <= 0 && hasSight && distance < 980) {
+          for (let shot = 0; shot < 18 + volleyBonus; shot += 1) {
+            const heavy = shot % 6 === 0
+            this.spawnEnemyProjectile(enemy, shot / (18 + volleyBonus) * TAU - enemy.phase * 0.62, heavy ? 102 : 132, heavy ? HEART_VALUE + HALF_HEART_VALUE : HALF_HEART_VALUE, prism[shot % prism.length], heavy ? 12 : 6.5)
+          }
+          enemy.attackCooldown = 2.55 * bossCadence
+        }
+        if ((enemy.abilityCooldown ?? 0) <= 0) {
+          for (let shot = -4; shot <= 4; shot += 1) this.spawnEnemyProjectile(enemy, targetAngle + shot * 0.075, 182, shot === 0 ? HEART_VALUE * 2 : HEART_VALUE, prism[(shot + 10) % prism.length], shot === 0 ? 14 : 8)
+          enemy.abilityCooldown = 4.4 * bossCadence
+          enemy.strafeDirection = -(enemy.strafeDirection ?? 1)
+        }
+        if ((enemy.summonCooldown ?? 0) <= 0) {
+          this.summonBossAdds(['hexer', 'hexer', 'spitter', 'spitter'], inputs)
+          enemy.summonCooldown = 7 * bossCadence
+        }
+      }
+
+      if (enemy.type === 'iron-choir') {
+        speed *= 0.86
+        if (enemy.attackCooldown <= 0 && hasSight && distance < 920) {
+          for (let shot = 0; shot < 12 + volleyBonus; shot += 1) {
+            const heavy = shot % 4 === 0
+            this.spawnEnemyProjectile(enemy, shot / (12 + volleyBonus) * TAU + enemy.phase * 0.18, shot % 2 ? 98 : 138, heavy ? HEART_VALUE + HALF_HEART_VALUE : HEART_VALUE, '#d69468', heavy ? 13 : 8)
+          }
+          enemy.attackCooldown = 3.15 * bossCadence
+        }
+        if ((enemy.abilityCooldown ?? 0) <= 0) {
+          for (let ring = 0; ring < 3; ring += 1) for (let shot = 0; shot < 8; shot += 1) this.spawnEnemyProjectile(enemy, shot / 8 * TAU + ring * 0.17, 82 + ring * 38, HEART_VALUE, ring === 2 ? '#f0c49e' : '#a95f42', 9 + ring * 2)
+          enemy.abilityCooldown = 5.3 * bossCadence
+        }
+        if ((enemy.summonCooldown ?? 0) <= 0) {
+          this.summonBossAdds(['bulwark', 'bulwark', 'charger', 'charger', 'hexer'], inputs)
+          enemy.summonCooldown = 6.6 * bossCadence
+        }
+      }
+
+      if (enemy.type === 'star-eater') {
+        if (hasSight) angle = targetAngle + (enemy.strafeDirection ?? 1) * (distance > 500 ? 0.75 : 1.65)
+        speed *= 1.15
+        if (enemy.attackCooldown <= 0 && hasSight && distance < 1050) {
+          for (let shot = 0; shot < 20 + volleyBonus; shot += 1) {
+            const heavy = shot % 5 === 0
+            this.spawnEnemyProjectile(enemy, shot / (20 + volleyBonus) * TAU + Math.sin(enemy.phase) * 0.8, 116, heavy ? HEART_VALUE + HALF_HEART_VALUE : HALF_HEART_VALUE, heavy ? '#f3a1ff' : '#7f5cff', heavy ? 12 : 7)
+          }
+          enemy.attackCooldown = 2.25 * bossCadence
+        }
+        if ((enemy.abilityCooldown ?? 0) <= 0) {
+          this.spawnBossLaser(enemy, targetAngle, '#b384ff', HEART_VALUE + HALF_HEART_VALUE)
+          this.spawnBossLaser(enemy, targetAngle - 0.28, '#694cff', HEART_VALUE)
+          this.spawnBossLaser(enemy, targetAngle + 0.28, '#694cff', HEART_VALUE)
+          enemy.abilityCooldown = 5.8 * bossCadence
+          enemy.strafeDirection = -(enemy.strafeDirection ?? 1)
+        }
+        if ((enemy.summonCooldown ?? 0) <= 0) {
+          this.summonBossAdds(['wraith', 'wraith', 'hexer', 'charger'], inputs)
+          enemy.summonCooldown = 7.8 * bossCadence
+        }
+      }
+
       if ((enemy.dashRemaining ?? 0) > 0 && isBoss(enemy.type)) {
         angle = enemy.dashAngle ?? angle
-        const dashMultiplier = enemy.type === 'graveknight' ? 5.4 : enemy.type === 'tollkeeper' ? 4.8 : enemy.type === 'eclipse-eye' ? 4.3 : 3.6
+        const dashMultiplier = enemy.type === 'void-hart' ? 8.6 : enemy.type === 'graveknight' ? 5.4 : enemy.type === 'tollkeeper' ? 4.8 : enemy.type === 'eclipse-eye' ? 4.3 : 3.6
         speed = enemy.speed * dashMultiplier * (enemy.slow > 0 ? 0.72 : 1)
       }
 
@@ -748,8 +931,21 @@ export class GameEngine {
     this.snapshot.enemies = this.snapshot.enemies.filter((enemy) => enemy.health > 0)
   }
 
-  private spawnEnemyProjectile(enemy: EnemyState, angle: number, speed: number, damage: number) {
-    this.snapshot.projectiles.push({ id: this.entityId++, ownerId: `enemy-${enemy.id}`, x: enemy.x, y: enemy.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, radius: 6.5, damage: quantizeEnemyDamage(damage), life: 4.5, pierce: 0, bounces: 0, enemy: true, chain: 0, burn: false, color: '#ef718e' })
+  private spawnEnemyProjectile(enemy: EnemyState, angle: number, speed: number, damage: number, color = '#ef718e', radius = 6.5, life = 4.5) {
+    this.snapshot.projectiles.push({ id: this.entityId++, ownerId: `enemy-${enemy.id}`, x: enemy.x, y: enemy.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, radius, damage: quantizeEnemyDamage(damage), life, pierce: 0, bounces: 0, enemy: true, chain: 0, burn: false, color })
+  }
+
+  private spawnBossLaser(enemy: EnemyState, angle: number, color: string, damage: number) {
+    for (let segment = 0; segment < 14; segment += 1) {
+      const offset = segment * 34
+      this.snapshot.projectiles.push({
+        id: this.entityId++, ownerId: `enemy-${enemy.id}`,
+        x: enemy.x + Math.cos(angle) * offset, y: enemy.y + Math.sin(angle) * offset,
+        vx: Math.cos(angle) * 175, vy: Math.sin(angle) * 175,
+        radius: segment % 3 === 0 ? 18 : 15, damage: quantizeEnemyDamage(damage), life: 1.8,
+        pierce: 0, bounces: 0, enemy: true, chain: 0, burn: false, color,
+      })
+    }
   }
 
   private updateProjectiles(dt: number) {
@@ -872,8 +1068,8 @@ export class GameEngine {
 
     if (owner) {
       owner.kills += 1
-      if (owner.character === 'briar') this.heal(owner, owner.maxHealth * (0.006 + rank(owner, 'bloodbloom') * 0.012) * (owner.awakened ? 2 : 1))
-      if (owner.weapon === 'sword' && rank(owner, 'blood-edge') > 0) this.heal(owner, owner.maxHealth * 0.02)
+      if (owner.character === 'briar') this.heal(owner, owner.maxHealth * (0.0015 + rank(owner, 'bloodbloom') * 0.0035) * (owner.awakened ? 1.35 : 1))
+      if (owner.weapon === 'sword' && rank(owner, 'blood-edge') > 0) this.heal(owner, owner.maxHealth * 0.0025)
       if (owner.character === 'nyx' && rank(owner, 'night-harvest') > 0 && owner.kills % 8 === 0) { this.heal(owner, 15); owner.hasteRemaining = 5 }
       if (owner.character === 'cinder' && rank(owner, 'phoenix-round') > 0 && owner.kills % 12 === 0) {
         this.heal(owner, 25)
@@ -882,7 +1078,7 @@ export class GameEngine {
         }
       }
     }
-    const values: Record<EnemyType, number> = { thrall: 4, skitter: 3, spitter: 6, bulwark: 10, wraith: 6, charger: 8, hexer: 8, leech: 4, tollkeeper: 75, broodmother: 85, graveknight: 95, 'eclipse-eye': 110 }
+    const values: Record<EnemyType, number> = { thrall: 4, skitter: 3, spitter: 6, bulwark: 10, wraith: 6, charger: 8, hexer: 8, leech: 4, tollkeeper: 75, broodmother: 85, graveknight: 95, 'eclipse-eye': 110, 'void-hart': 82, 'prism-witch': 88, 'iron-choir': 102, 'star-eater': 118 }
     const pickup: PickupState = { id: this.entityId++, x: enemy.x, y: enemy.y, value: values[enemy.type] }
     this.snapshot.pickups.push(pickup)
 
@@ -895,7 +1091,7 @@ export class GameEngine {
     if (burnOwner && (rank(burnOwner, 'combustion') > 0 || (burnOwner.character === 'cinder' && (burnOwner.awakened || rank(burnOwner, 'flashpoint') > 0)))) {
       const flashpoint = burnOwner.character === 'cinder' && rank(burnOwner, 'flashpoint') > 0
       const explosionRange = flashpoint ? 180 : burnOwner.awakened && burnOwner.character === 'cinder' ? 118 : 95
-      const explosionDamage = flashpoint ? 75 : burnOwner.awakened && burnOwner.character === 'cinder' ? 42 : 28
+      const explosionDamage = flashpoint ? 75 : burnOwner.awakened && burnOwner.character === 'cinder' ? 42 : rank(burnOwner, 'combustion') > 0 ? 16 : 0
       for (const nearby of [...this.snapshot.enemies]) {
         if (nearby.id !== enemy.id && nearby.health > 0 && distanceSquared(enemy.x, enemy.y, nearby.x, nearby.y) < explosionRange * explosionRange) this.damageEnemy(nearby, explosionDamage, burnOwner.id)
       }
@@ -918,7 +1114,7 @@ export class GameEngine {
       return distanceSquared(player.x, player.y, ally.x, ally.y) < range * range
     })
     const auraReduction = bastion ? (bastion.awakened ? 0.32 : 0.18) + rank(bastion, 'aegis-lattice') * 0.12 : 0
-    const personalReduction = rank(player, 'steadfast') * 0.2 + rank(player, 'dawn-armor') * 0.2
+    const personalReduction = rank(player, 'steadfast') * 0.2 + rank(player, 'dawn-armor') * 0.2 + (this.snapshot.teamBuffs['iron-vow'] ?? 0) * 0.08
       + (player.reloadRemaining > 0 ? rank(player, 'shielded-mag') * 0.35 : 0)
     const separationPenalty = player.isolatedFor >= 3 && this.snapshot.players.length > 1 ? HALF_HEART_VALUE : 0
     const mitigated = quantizeEnemyDamage(amount) * Math.max(0.3, 1 - auraReduction - personalReduction) + separationPenalty
@@ -978,7 +1174,7 @@ export class GameEngine {
           const multiplier = 1 + rank(player, 'scavenger') * 0.4 + rank(player, 'red-harvest') * 0.35
           const sharedXp = Math.max(1, Math.round(pickup.value * multiplier))
           for (const squadmate of this.snapshot.players) squadmate.xp += sharedXp
-          if (rank(player, 'red-harvest') > 0) this.heal(player, 2)
+          if (rank(player, 'red-harvest') > 0) this.heal(player, 0.75)
           pickup.value = 0
           break
         }

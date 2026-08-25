@@ -759,3 +759,96 @@ body::before {
   .map-art { width: 132px; height: 100%; min-height: 220px; }
   .map-hud { display: none; }
 }
+
+/* Minimal field interface and full-bleed chronicle art. */
+.lobby-layout { gap: 34px; }
+.character-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+.selection-card { border-color: rgba(235,242,237,.1); background: rgba(5,14,11,.76); box-shadow: none; }
+.selection-card:hover { border-color: color-mix(in srgb, var(--accent, var(--gold)) 54%, transparent); transform: translateY(-1px); }
+.selection-card.selected { border-color: var(--accent, var(--gold)); background: rgba(8,18,14,.9); }
+.character-card { min-height: 350px; box-shadow: none; }
+.character-card::before { background: linear-gradient(180deg, transparent 37%, rgba(3,10,8,.22) 51%, rgba(3,10,8,.98) 69%); }
+.portrait-sigil { width: 30px; height: 30px; border-radius: 2px; background: rgba(3,10,8,.76); box-shadow: none; font-size: 14px; }
+.card-copy { padding: 0 15px 15px; }
+.card-copy strong { font-size: 20px; text-shadow: 0 2px 8px #000; }
+.card-copy em { min-height: 0; margin-bottom: 8px; }
+.card-copy b { padding-top: 7px; border-top-color: rgba(255,255,255,.08); font-size: 7px; line-height: 1.45; }
+.card-copy i { display: block; margin-top: 7px; color: color-mix(in srgb, var(--accent, var(--gold)) 72%, #d7ded9); font: 6px/1.45 'DM Mono', monospace; }
+.card-copy i kbd { padding: 2px 4px; border: 1px solid currentColor; font: inherit; }
+.character-card.coming-soon { min-height: 180px; align-items: center; justify-content: center; border-style: dashed; opacity: .42; }
+.character-card.coming-soon::before { background: radial-gradient(circle, rgba(242,212,121,.04), transparent 60%); }
+.character-card.coming-soon .card-copy { width: auto; padding: 20px; text-align: center; }
+.future-mark { position: absolute; left: 12px; top: 10px; color: var(--dim); font: 8px 'DM Mono', monospace; }
+.weapon-card, .map-copy, .party-column { box-shadow: none; }
+.weapon-card { background: rgba(5,14,11,.76); }
+.party-column { background: transparent; }
+
+.team-hud { left: 14px; top: 58px; width: 196px; gap: 3px; }
+.team-chip { min-height: 37px; grid-template-columns: 25px 1fr 34px; padding: 4px 6px; border: 0; border-left: 1px solid var(--player); background: linear-gradient(90deg, rgba(2,8,6,.78), rgba(2,8,6,.18)); }
+.team-chip > .team-portrait { width: 25px; height: 25px; border: 0 !important; box-shadow: none; }
+.team-hearts { margin-top: 3px; }
+.team-hearts .heart-shell { width: 8px; height: 7px; filter: none; }
+.perks-hud { right: 14px; top: 58px; gap: 4px; }
+.perks-hud span.perk-medallion { width: 31px; height: 31px; border-radius: 2px; box-shadow: none; }
+.mute-button { right: 14px; top: 14px; border-color: rgba(255,255,255,.08); background: rgba(2,8,6,.54); }
+.controls-hud { right: 14px; bottom: 14px; gap: 12px; opacity: .68; }
+.ammo-hud { width: min(470px, calc(100% - 32px)); padding: 8px 12px; border: 1px solid rgba(255,255,255,.1); border-bottom-color: rgba(242,212,121,.55); clip-path: none; background: rgba(2,8,6,.78); box-shadow: 0 9px 28px rgba(0,0,0,.22); backdrop-filter: blur(7px); }
+.vitals-row { grid-template-columns: 1fr 62px; margin-bottom: 6px; padding-bottom: 6px; }
+.player-hearts .heart-shell { width: 15px; height: 13px; filter: none; }
+.combat-readouts { display: grid; grid-template-columns: 1fr 1.25fr; align-items: center; gap: 14px; }
+.weapon-readout { padding-right: 14px; border-right: 1px solid rgba(255,255,255,.08); }
+.weapon-readout > strong { margin: 2px 0 4px; font-size: 14px; }
+.special-readout { display: grid; grid-template-columns: 38px 1fr; align-items: center; gap: 9px; text-align: left; opacity: .68; }
+.special-readout kbd { width: 35px; height: 35px; display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent); border-radius: 50%; background: conic-gradient(var(--accent) var(--special-progress), rgba(255,255,255,.07) 0); color: #07100e; font: 6px 'DM Mono', monospace; }
+.special-readout span { min-width: 0; }
+.special-readout strong { display: block; margin-top: 2px; color: #d5ded8; font: 500 12px 'Oswald', sans-serif; }
+.special-readout.ready { opacity: 1; }
+.special-readout.ready kbd { box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 22%, transparent); }
+
+.upgrade-scene,
+.upgrade-overlay.art-only .upgrade-scene { inset: 0; width: 100%; opacity: 1; background-color: #020806; background-image: var(--splash-art); background-position: center; background-repeat: no-repeat; background-size: cover; filter: saturate(1.02) contrast(1.03); transform: none; }
+.upgrade-scene::before { content: ''; position: absolute; inset: 0 0 0 auto; width: min(55vw, 900px); background-image: var(--portrait-art); background-position: right center; background-repeat: no-repeat; background-size: auto 108%; filter: saturate(1.03) contrast(1.02); -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,.22) 12%, #000 34%); mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,.22) 12%, #000 34%); }
+.upgrade-scene[data-character="rapunsel"]::before { display: none; }
+.upgrade-scene::after { background: linear-gradient(90deg, rgba(2,8,6,.93) 0%, rgba(2,8,6,.78) 37%, rgba(2,8,6,.2) 67%, rgba(2,8,6,.05) 100%), linear-gradient(0deg, rgba(2,8,6,.55), transparent 38%); }
+.upgrade-backdrop { background: linear-gradient(90deg, rgba(2,7,5,.34), transparent 72%); backdrop-filter: none; }
+.upgrade-draft { left: 35%; width: min(900px, 67vw); text-align: left; }
+.upgrade-draft h2 { font: 500 clamp(28px, 3.4vw, 48px) 'Oswald', sans-serif; }
+.upgrade-draft > p:not(.eyebrow) { margin-left: 0; margin-right: 0; max-width: 690px; }
+.upgrade-status { justify-content: flex-start; }
+.upgrade-cards { gap: 8px; margin-top: 16px; }
+.upgrade-card { min-height: 245px; padding: 18px; border-color: rgba(255,255,255,.12); background: color-mix(in srgb, var(--accent) 5%, rgba(3,10,8,.68)); box-shadow: none; backdrop-filter: blur(10px); }
+.upgrade-card.weapon { background: color-mix(in srgb, var(--accent) 7%, rgba(3,10,8,.68)); }
+.upgrade-card::before { display: none; }
+.upgrade-card > span.upgrade-art { width: 58px; height: 58px; align-self: flex-start; margin: 0 0 18px; border-radius: 2px; box-shadow: none; }
+.upgrade-card > span.upgrade-art.glyph-icon { font-size: 28px; }
+.upgrade-card strong { margin: 7px 0 9px; font-size: 21px; }
+.upgrade-card em { line-height: 1.5; }
+.personality-note { right: 22px; bottom: 24px; width: min(410px, 34vw); border: 0; border-bottom: 1px solid rgba(242,212,121,.5); background: rgba(2,8,6,.62); box-shadow: none; }
+.art-view-button { border-color: rgba(255,255,255,.15); background: rgba(2,8,6,.55); }
+.upgrade-overlay.art-only .upgrade-scene::before { width: min(55vw, 900px); }
+.upgrade-overlay.art-only .upgrade-scene::after { background: linear-gradient(0deg, rgba(2,8,6,.55), transparent 35%); }
+
+@media (max-width: 1050px) {
+  .character-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .upgrade-draft { left: 50%; width: min(930px, calc(100% - 36px)); }
+  .upgrade-scene::after { background: linear-gradient(90deg, rgba(2,8,6,.86), rgba(2,8,6,.34)); }
+}
+
+@media (max-width: 680px) {
+  .landing-shell .topbar .text-button { display: none; }
+  .wordmark { font-size: 15px; letter-spacing: .13em; }
+  .character-grid { grid-template-columns: 1fr; }
+  .character-card { min-height: 400px; }
+  .character-card.coming-soon { min-height: 130px; }
+  .team-hud { left: 8px; top: 62px; width: 164px; }
+  .ammo-hud { bottom: 8px; padding: 7px 9px; }
+  .combat-readouts { gap: 8px; }
+  .special-readout { grid-template-columns: 32px 1fr; gap: 6px; }
+  .special-readout kbd { width: 29px; height: 29px; font-size: 5px; }
+  .special-readout small { font-size: 5px; }
+  .upgrade-scene::before { width: 88vw; opacity: .72; }
+  .upgrade-scene::after { background: linear-gradient(0deg, rgba(2,8,6,.94) 0%, rgba(2,8,6,.7) 68%, rgba(2,8,6,.24) 100%); }
+  .upgrade-draft { top: 58%; width: calc(100% - 24px); }
+  .upgrade-card { min-height: 185px; }
+  .personality-note { left: 12px; right: 12px; top: 54px; bottom: auto; width: auto; }
+}

@@ -1,4 +1,4 @@
-export type CharacterId = 'vesper' | 'cinder' | 'bastion' | 'warden' | 'nyx' | 'tempest' | 'briar' | 'seraph'
+export type CharacterId = 'vesper' | 'cinder' | 'bastion' | 'warden' | 'nyx' | 'tempest' | 'briar' | 'seraph' | 'rapunsel'
 export type WeaponId =
   | 'revolver' | 'scattergun' | 'arc-rifle'
   | 'burst-carbine' | 'railgun' | 'grenade-launcher'
@@ -7,7 +7,8 @@ export type EnemyType =
   | 'thrall' | 'skitter' | 'spitter' | 'bulwark'
   | 'wraith' | 'charger' | 'hexer' | 'leech'
   | 'tollkeeper' | 'broodmother' | 'graveknight' | 'eclipse-eye'
-export type BossType = 'tollkeeper' | 'broodmother' | 'graveknight' | 'eclipse-eye'
+  | 'void-hart' | 'prism-witch' | 'iron-choir' | 'star-eater'
+export type BossType = 'tollkeeper' | 'broodmother' | 'graveknight' | 'eclipse-eye' | 'void-hart' | 'prism-witch' | 'iron-choir' | 'star-eater'
 export type CompanionKind = 'gravewing' | 'ashkit' | 'aegis-hound' | 'mercy-moth' | 'shadecat' | 'storm-wisp' | 'thornling' | 'sunbird'
 export type GamePhase = 'playing' | 'upgrade' | 'victory' | 'defeat'
 export type MapId = 'gloamreach' | 'emberfall' | 'reliquary'
@@ -33,6 +34,7 @@ export interface InputState {
   right: boolean
   firing: boolean
   interact: boolean
+  special: boolean
   aim: number
   viewportWidth?: number
   viewportHeight?: number
@@ -53,6 +55,9 @@ export interface PlayerState extends PlayerConfig {
   reloadRemaining: number
   reloadDuration: number
   fireCooldown: number
+  specialCooldown: number
+  specialPulse: number
+  specialHeld: boolean
   invulnerable: number
   downed: boolean
   eliminated: boolean

@@ -9,6 +9,8 @@ export interface CharacterDefinition {
   description: string
   startingHearts: number
   baseAbility: string
+  activeAbility: string
+  activeCooldown: number
   awakening: string
 }
 
@@ -39,14 +41,15 @@ export interface WeaponDefinition {
 }
 
 export const CHARACTERS: CharacterDefinition[] = [
-  { id: 'vesper', name: 'Vesper', epithet: 'The Deadeye', glyph: '✦', color: '#f2d479', description: 'Measured shots, brutal payoffs.', startingHearts: 5, baseAbility: 'Sixth Sense — every sixth shot is a critical hit.', awakening: 'Perfect Rhythm — every fourth shot crits and pierces.' },
-  { id: 'cinder', name: 'Scarlet', epithet: 'The Ashborn', glyph: '◆', color: '#ff735c', description: 'Turns packed hordes into kindling.', startingHearts: 5, baseAbility: 'Kindling — weapon hits ignite enemies.', awakening: 'Flashover — burning enemies explode on death.' },
-  { id: 'bastion', name: 'Bastion', epithet: 'The Oathbound', glyph: '⬡', color: '#74d8c2', description: 'A knight who makes danger break around her.', startingHearts: 6, baseAbility: 'Bulwark — starts with a sixth heart; nearby allies take 18% less damage.', awakening: 'Hold the Line — the aura doubles in range and strength.' },
-  { id: 'warden', name: 'Warden', epithet: 'The Last Light', glyph: '✚', color: '#b6a5ff', description: 'Keeps bad runs from becoming final runs.', startingHearts: 5, baseAbility: 'Second Wind — revive allies 50% faster.', awakening: 'Grace — living hunters slowly regenerate health.' },
-  { id: 'nyx', name: 'Nyx', epithet: 'The Veilblade', glyph: '☾', color: '#7f8cff', description: 'Slips between blows and cuts through crowded lanes.', startingHearts: 5, baseAbility: 'Veilstep — 16% chance to evade incoming damage.', awakening: 'Night Without End — evades become 28% and grant haste.' },
-  { id: 'tempest', name: 'Tempest', epithet: 'The Stormheart', glyph: 'ϟ', color: '#65bfff', description: 'Makes every target the start of a lightning storm.', startingHearts: 5, baseAbility: 'Conduction — every projectile chains once.', awakening: 'Supercell — chains travel farther and strike harder.' },
-  { id: 'briar', name: 'Briar', epithet: 'The Bloodrose', glyph: '❧', color: '#e45d82', description: 'Feeds on the horde and punishes anything that closes.', startingHearts: 5, baseAbility: 'Bloodbloom — kills restore a sliver of health.', awakening: 'Red Spring — healing doubles and excess becomes armor.' },
-  { id: 'seraph', name: 'Seraph', epithet: 'The Dawnwing', glyph: '☼', color: '#ffd783', description: 'Radiant rounds reward fearless, precise play.', startingHearts: 5, baseAbility: 'Sunfire — faster shots and +8% critical chance.', awakening: 'First Light — critical hits deal greater damage and pierce.' },
+  { id: 'vesper', name: 'Vesper', epithet: 'The Deadeye', glyph: '✦', color: '#f2d479', description: 'Measured shots, brutal payoffs.', startingHearts: 5, baseAbility: 'Sixth Sense — every sixth shot is a critical hit.', activeAbility: 'Deadeye Focus — instantly marks and executes the nearest threats.', activeCooldown: 11, awakening: 'Perfect Rhythm — every fourth shot crits and pierces.' },
+  { id: 'cinder', name: 'Scarlet', epithet: 'The Ashborn', glyph: '◆', color: '#ff735c', description: 'Turns packed hordes into kindling.', startingHearts: 5, baseAbility: 'Kindling — weapon hits ignite enemies.', activeAbility: 'Firebrand — release an igniting ring of flame.', activeCooldown: 10, awakening: 'Flashover — burning enemies explode on death.' },
+  { id: 'bastion', name: 'Bastion', epithet: 'The Oathbound', glyph: '⬡', color: '#74d8c2', description: 'A knight who makes danger break around her.', startingHearts: 6, baseAbility: 'Bulwark — starts with a sixth heart; nearby allies take 18% less damage.', activeAbility: 'Aegis Pulse — protect nearby allies and crush the surrounding horde.', activeCooldown: 14, awakening: 'Hold the Line — the aura doubles in range and strength.' },
+  { id: 'warden', name: 'Warden', epithet: 'The Last Light', glyph: '✚', color: '#b6a5ff', description: 'Keeps bad runs from becoming final runs.', startingHearts: 5, baseAbility: 'Second Wind — revive allies 50% faster.', activeAbility: 'Mending Light — restore one heart to the squad.', activeCooldown: 16, awakening: 'Grace — living hunters slowly regenerate health.' },
+  { id: 'nyx', name: 'Nyx', epithet: 'The Veilblade', glyph: '☾', color: '#7f8cff', description: 'Slips between blows and cuts through crowded lanes.', startingHearts: 5, baseAbility: 'Veilstep — 16% chance to evade incoming damage.', activeAbility: 'Nightstep — blink through danger and become briefly untouchable.', activeCooldown: 9, awakening: 'Night Without End — evades become 28% and grant haste.' },
+  { id: 'tempest', name: 'Tempest', epithet: 'The Stormheart', glyph: 'ϟ', color: '#65bfff', description: 'Makes every target the start of a lightning storm.', startingHearts: 5, baseAbility: 'Conduction — every projectile chains once.', activeAbility: 'Cloudbreak — call lightning onto the nearest enemy pack.', activeCooldown: 10, awakening: 'Supercell — chains travel farther and strike harder.' },
+  { id: 'briar', name: 'Briar', epithet: 'The Bloodrose', glyph: '❧', color: '#e45d82', description: 'Feeds on the horde and punishes anything that closes.', startingHearts: 5, baseAbility: 'Bloodbloom — kills restore a sliver of health.', activeAbility: 'Rosewake — erupt thorns around you and drink their damage.', activeCooldown: 12, awakening: 'Red Spring — healing doubles and excess becomes armor.' },
+  { id: 'seraph', name: 'Seraph', epithet: 'The Dawnwing', glyph: '☼', color: '#ffd783', description: 'Radiant rounds reward fearless, precise play.', startingHearts: 5, baseAbility: 'Sunfire — faster shots and +8% critical chance.', activeAbility: 'Daybreak — fire a radiant twelve-ray sunburst.', activeCooldown: 10, awakening: 'First Light — critical hits deal greater damage and pierce.' },
+  { id: 'rapunsel', name: 'Rapunsel', epithet: 'The Living Braid', glyph: '⌇', color: '#c99365', description: 'A sweet-tempered adult hunter whose impossible braid has a mind of its own.', startingHearts: 5, baseAbility: 'Long Reach — hair slashes strike every enemy around her.', activeAbility: 'Tress Tempest — Space whips her hair through a full-circle slash.', activeCooldown: 8, awakening: 'Unbound — every hair slash echoes a second time.' },
 ]
 
 export const WEAPONS: WeaponDefinition[] = [
@@ -70,7 +73,7 @@ export const UPGRADES: UpgradeDefinition[] = [
   common({ id: 'quick-hands', name: 'Quick Hands', icon: '↻', description: 'Reloads complete 42% faster.', maxLevel: 1, accent: '#f2d479' }),
   common({ id: 'double-tap', name: 'Double Tap', icon: 'Ⅱ', description: '+1 projectile to every volley; each deals 12% less damage.', maxLevel: 1, accent: '#e5b06d' }),
   common({ id: 'static-link', name: 'Static Link', icon: 'ϟ', description: 'Every hit arcs into two additional enemies.', maxLevel: 1, accent: '#74c8ff' }),
-  common({ id: 'combustion', name: 'Combustion', icon: '◆', description: 'Hits ignite for heavy damage; burning kills erupt.', maxLevel: 1, accent: '#ff735c' }),
+  common({ id: 'combustion', name: 'Combustion', icon: '◆', description: 'Hits ignite for light damage; burning kills release a modest eruption.', maxLevel: 1, accent: '#ff735c' }),
   common({ id: 'fleetfoot', name: 'Fleetfoot', icon: '»', description: 'Move 25% faster.', maxLevel: 1, accent: '#74d8c2' }),
   common({ id: 'vitality', name: 'Titan Blood', icon: '♥', description: '+1 maximum heart and immediately refill it.', maxLevel: 1, accent: '#e8879c' }),
   common({ id: 'soul-magnet', name: 'Soul Vortex', icon: '◎', description: 'Vacuum soul shards from 125% farther away.', maxLevel: 1, accent: '#b6a5ff' }),
@@ -111,7 +114,7 @@ export const UPGRADES: UpgradeDefinition[] = [
   armament('seeker', { id: 'murder-of-nightjars', name: 'Murder of Nightjars', icon: '✣', description: 'Nightjar launches two additional homing missiles.', maxLevel: 1, accent: '#9c82ff' }),
   armament('seeker', { id: 'apex-guidance', name: 'Apex Guidance', icon: '◎', description: 'Nightjar missiles turn harder, fly longer, and deal 35% more damage.', maxLevel: 1, accent: '#b09aff' }),
   armament('sword', { id: 'whirling-dawn', name: 'Whirling Dawn', icon: '☼', description: 'Dawncleaver becomes a nine-slash full-circle whirlwind.', maxLevel: 1, accent: '#fff0bd' }),
-  armament('sword', { id: 'blood-edge', name: 'Blood Edge', icon: '♥', description: 'Dawncleaver kills restore 2% of maximum health.', maxLevel: 1, accent: '#ef718e' }),
+  armament('sword', { id: 'blood-edge', name: 'Blood Edge', icon: '♥', description: 'Dawncleaver kills restore only 0.25% of maximum health.', maxLevel: 1, accent: '#ef718e' }),
 
   signature('vesper', { id: 'deadeye-rhythm', name: 'Deadeye Rhythm', icon: 'Ⅳ', description: 'Every fourth trigger pull is a guaranteed critical hit.', maxLevel: 1, accent: '#f2d479' }),
   signature('vesper', { id: 'golden-bullet', name: 'Golden Bullet', icon: '✹', description: 'Critical hits deal 75% more damage.', maxLevel: 1, accent: '#ffd86b' }),
@@ -143,7 +146,7 @@ export const UPGRADES: UpgradeDefinition[] = [
   signature('tempest', { id: 'charged-mag', name: 'Charged Magazine', icon: '▤', description: '+35% fire rate and +40% magazine capacity.', maxLevel: 1, accent: '#4aaeff' }),
   signature('tempest', { id: 'ball-lightning', name: 'Ball Lightning', icon: '◉', description: 'Chained targets are crippled for 2.5 seconds.', maxLevel: 1, accent: '#a5e2ff' }),
   signature('tempest', { id: 'storm-wisp', name: 'Storm Wisp', icon: '☄', description: 'Summon a living storm that arcs through three enemies.', maxLevel: 1, accent: '#65bfff' }),
-  signature('briar', { id: 'bloodbloom', name: 'Bloodbloom', icon: '❧', description: 'Every kill restores 1.8% of maximum health.', maxLevel: 1, accent: '#e45d82' }),
+  signature('briar', { id: 'bloodbloom', name: 'Bloodbloom', icon: '❧', description: 'Every kill restores 0.35% additional maximum health.', maxLevel: 1, accent: '#e45d82' }),
   signature('briar', { id: 'thorn-crown', name: 'Thorn Crown', icon: '♛', description: 'Return 65% of incoming damage to a nearby attacker.', maxLevel: 1, accent: '#f07a98' }),
   signature('briar', { id: 'rose-thorns', name: 'Rose Thorns', icon: '⇥', description: 'Shots gain +35% size and pierce two more enemies.', maxLevel: 1, accent: '#d84a72' }),
   signature('briar', { id: 'red-harvest', name: 'Red Harvest', icon: '✽', description: 'Soul shards grant +35% XP and restore 8% of a heart.', maxLevel: 1, accent: '#ff91aa' }),
@@ -153,15 +156,27 @@ export const UPGRADES: UpgradeDefinition[] = [
   signature('seraph', { id: 'dawn-armor', name: 'Dawn Armor', icon: '♢', description: 'Take 20% less damage and restore 6% of a heart per second.', maxLevel: 1, accent: '#f1c865' }),
   signature('seraph', { id: 'halo-crit', name: 'Halo of Judgment', icon: '✺', description: '+18% critical chance and +50% critical damage.', maxLevel: 1, accent: '#fff0bd' }),
   signature('seraph', { id: 'sunbird', name: 'Sunbird', icon: '♨', description: 'Summon a radiant falcon whose lances pierce enemy lines.', maxLevel: 1, accent: '#ffd783' }),
+  signature('rapunsel', { id: 'silken-radius', name: 'Silken Radius', icon: '◎', description: 'Tress Tempest reaches 50% farther and deals 35% more damage.', maxLevel: 1, accent: '#d8a777' }),
+  signature('rapunsel', { id: 'quick-braid', name: 'Quick Braid', icon: '↻', description: 'Tress Tempest recharges 40% faster.', maxLevel: 1, accent: '#e1b98e' }),
+  signature('rapunsel', { id: 'thousand-strands', name: 'Thousand Strands', icon: '≋', description: 'Tress Tempest lashes twice and the echo deals full damage.', maxLevel: 1, accent: '#c99365' }),
+  signature('rapunsel', { id: 'silk-guard', name: 'Silk Guard', icon: '◌', description: 'Casting Tress Tempest grants two seconds of invulnerability.', maxLevel: 1, accent: '#efd4b6' }),
+  signature('rapunsel', { id: 'braided-heart', name: 'Braided Heart', icon: '♥', description: 'Hair-slash kills restore 10% of one heart each, up to one heart per cast.', maxLevel: 1, accent: '#dca17f' }),
 ]
 
-export const BOSS_TYPES = new Set<EnemyType>(['tollkeeper', 'broodmother', 'graveknight', 'eclipse-eye'])
-export const BOSS_NAMES: Record<BossType, string> = { tollkeeper: 'THE TOLLKEEPER', broodmother: 'THE BROODMOTHER', graveknight: 'THE GRAVEKNIGHT', 'eclipse-eye': 'THE ECLIPSE EYE' }
+export const BOSS_TYPES = new Set<EnemyType>(['tollkeeper', 'broodmother', 'graveknight', 'eclipse-eye', 'void-hart', 'prism-witch', 'iron-choir', 'star-eater'])
+export const BOSS_NAMES: Record<BossType, string> = {
+  tollkeeper: 'THE TOLLKEEPER', broodmother: 'THE BROODMOTHER', graveknight: 'THE GRAVEKNIGHT', 'eclipse-eye': 'THE ECLIPSE EYE',
+  'void-hart': 'THE VOID HART', 'prism-witch': 'THE PRISM WITCH', 'iron-choir': 'THE IRON CHOIR', 'star-eater': 'THE STAR-EATER',
+}
 export const TEAM_BUFFS: TeamBuffDefinition[] = [
   { id: 'quicksilver-bell', name: 'Quicksilver Bell', icon: '♢', description: 'The squad fires and reloads 12% faster.', accent: '#e6b96b', boss: 'tollkeeper' },
   { id: 'brood-vigor', name: 'Brood Vigor', icon: '♥', description: 'Every hunter gains one maximum heart and refills it.', accent: '#ef718e', boss: 'broodmother' },
   { id: 'grave-edge', name: 'Grave Edge', icon: '†', description: 'The squad deals 15% more weapon damage.', accent: '#77d4a6', boss: 'graveknight' },
   { id: 'eclipse-stride', name: 'Eclipse Stride', icon: '◐', description: 'The squad moves faster and pulls shards farther.', accent: '#aa86ff', boss: 'eclipse-eye' },
+  { id: 'hart-stride', name: 'Hart Stride', icon: '⌁', description: 'The squad moves 8% faster.', accent: '#53e0d2', boss: 'void-hart' },
+  { id: 'prism-edge', name: 'Prism Edge', icon: '◇', description: 'The squad deals 10% more weapon damage.', accent: '#ef8dff', boss: 'prism-witch' },
+  { id: 'iron-vow', name: 'Iron Vow', icon: '⬡', description: 'The squad takes 8% less damage.', accent: '#d69468', boss: 'iron-choir' },
+  { id: 'star-hour', name: 'Star Hour', icon: '✦', description: 'Active abilities recharge 10% faster.', accent: '#9c82ff', boss: 'star-eater' },
 ]
 
 export const characterById = (id: CharacterId) => CHARACTERS.find((item) => item.id === id) ?? CHARACTERS[0]
@@ -170,4 +185,4 @@ export const upgradeById = (id: string) => UPGRADES.find((item) => item.id === i
 export const teamBuffByBoss = (boss: BossType) => TEAM_BUFFS.find((item) => item.boss === boss) ?? TEAM_BUFFS[0]
 export const teamBuffById = (id: string) => TEAM_BUFFS.find((item) => item.id === id) ?? TEAM_BUFFS[0]
 export const isBoss = (type: EnemyType): type is BossType => BOSS_TYPES.has(type)
-export const PLAYER_COLORS = ['#f2d479', '#ff735c', '#74d8c2', '#b6a5ff', '#7f8cff', '#65bfff', '#e45d82', '#ffd783']
+export const PLAYER_COLORS = ['#f2d479', '#ff735c', '#74d8c2', '#b6a5ff', '#7f8cff', '#65bfff', '#e45d82', '#ffd783', '#c99365']

@@ -1,5 +1,5 @@
 import { isBoss } from './data'
-import { HEAL_CRYSTAL_SECONDS, heartFill, heartSlots } from './health'
+import { HEAL_CRYSTAL_SECONDS } from './health'
 import { mapById, type MapDefinition } from './maps'
 import type { CompanionState, EnemyState, GameEvent, GameSnapshot, PlayerState, StructureState, StructureType } from './types'
 
@@ -11,7 +11,7 @@ interface Effect {
 }
 
 const TAU = Math.PI * 2
-const CHARACTER_SPRITE_INDEX: Record<PlayerState['character'], number> = { vesper: 0, cinder: 1, bastion: 2, warden: 3, nyx: 4, tempest: 5, briar: 6, seraph: 7 }
+const CHARACTER_SPRITE_INDEX: Record<PlayerState['character'], number> = { vesper: 0, cinder: 1, bastion: 2, warden: 3, nyx: 4, tempest: 5, briar: 6, seraph: 7, rapunsel: 8 }
 const WEAPON_SPRITE_INDEX: Record<PlayerState['weapon'], number> = {
   revolver: 0, scattergun: 1, 'arc-rifle': 2, 'burst-carbine': 3, railgun: 4,
   'grenade-launcher': 5, flamethrower: 6, 'frost-cannon': 7, seeker: 8, sword: 9,
@@ -21,6 +21,11 @@ const ENEMY_SPRITE_INDEX: Record<EnemyState['type'], number> = {
   thrall: 0, skitter: 1, spitter: 2, bulwark: 3,
   wraith: 4, charger: 5, hexer: 6, leech: 7,
   tollkeeper: 8, broodmother: 9, graveknight: 10, 'eclipse-eye': 11,
+  'void-hart': 10, 'prism-witch': 11, 'iron-choir': 8, 'star-eater': 11,
+}
+const BOSS_COLORS: Partial<Record<EnemyState['type'], string>> = {
+  tollkeeper: '#ef718e', broodmother: '#e45d82', graveknight: '#f2d479', 'eclipse-eye': '#aa86ff',
+  'void-hart': '#48e1d0', 'prism-witch': '#ef8dff', 'iron-choir': '#d69468', 'star-eater': '#7f5cff',
 }
 const STRUCTURE_ART: Record<StructureType, { index: number; size: number; label: string; color: string }> = {
   moonwell: { index: 0, size: 156, label: 'MOONWELL · HEART CRYSTAL', color: '116, 216, 194' },
@@ -69,8 +74,8 @@ export class GameRenderer {
     const context = canvas.getContext('2d')
     if (!context) throw new Error('Canvas rendering is not supported in this browser.')
     this.context = context
-    this.hunterSpriteAtlas.src = `${artBase}hunter-sprites-v3.webp`
-    this.weaponSpriteAtlas.src = `${artBase}weapon-sprites-v1.webp`
+    this.hunterSpriteAtlas.src = `${artBase}hunter-sprites-v4.webp`
+    this.weaponSpriteAtlas.src = `${artBase}weapon-sprites-v2.webp`
     this.companionSpriteAtlas.src = `${artBase}companion-sprites-v1.webp`
     this.enemySpriteAtlas.src = `${artBase}enemy-sprites.webp`
     this.structureAtlas.src = `${artBase}structure-atlas-v2.webp`
@@ -360,7 +365,7 @@ export class GameRenderer {
         context.beginPath()
         context.ellipse(x, y + enemy.radius * 0.72, size * 0.28, size * 0.12, 0, 0, TAU)
         context.fill()
-        context.shadowColor = burning ? '#ff593d' : enemy.slow > 0 ? '#82ceff' : boss ? '#ef375e' : 'rgba(0,0,0,0)'
+        context.shadowColor = burning ? '#ff593d' : enemy.slow > 0 ? '#82ceff' : boss ? (BOSS_COLORS[enemy.type] ?? '#ef375e') : 'rgba(0,0,0,0)'
         context.shadowBlur = burning || enemy.slow > 0 ? 20 : enemy.finale ? 28 : boss ? 16 : 0
         this.drawAtlasSprite(
           this.enemySpriteAtlas,
@@ -376,16 +381,19 @@ export class GameRenderer {
           transform.flipX,
         )
         context.restore()
+        if (boss) this.drawBossIdentity(enemy, x, y, facing, size)
         if (boss) {
-          context.strokeStyle = `rgba(239, 113, 142, ${0.28 + Math.sin(enemy.phase * 2) * 0.08})`
+          context.strokeStyle = BOSS_COLORS[enemy.type] ?? '#ef718e'
+          context.globalAlpha = 0.28 + Math.sin(enemy.phase * 2) * 0.08
           context.lineWidth = 2
           context.beginPath()
           context.arc(x, y, (enemy.finale ? 80 : 69) + Math.sin(enemy.phase * 2) * 4, 0, TAU)
           context.stroke()
+          context.globalAlpha = 1
         }
         if (boss || (enemy.type === 'bulwark' && enemy.maxHealth > 500)) {
           const barWidth = boss ? 130 : 92
-          this.drawBar(x - barWidth / 2, y - size * 0.47, barWidth, 5, enemy.health / enemy.maxHealth, '#ef718e')
+          this.drawBar(x - barWidth / 2, y - size * 0.47, barWidth, 5, enemy.health / enemy.maxHealth, BOSS_COLORS[enemy.type] ?? '#ef718e')
         }
         continue
       }
@@ -443,6 +451,77 @@ export class GameRenderer {
         this.drawBar(x - 42, y - enemy.radius - 14, 84, 5, enemy.health / enemy.maxHealth, '#ef718e')
       }
     }
+  }
+
+  private drawBossIdentity(enemy: EnemyState, x: number, y: number, facing: number, size: number) {
+    const context = this.context
+    context.save()
+    context.translate(x, y)
+    const pulse = Math.sin(enemy.phase * 3) * 3
+    if (enemy.type === 'graveknight') {
+      context.rotate(facing)
+      context.shadowColor = '#f2d479'
+      context.shadowBlur = 8
+      context.strokeStyle = '#f8e8ae'
+      context.lineWidth = 5
+      context.beginPath()
+      context.moveTo(size * 0.22, 0)
+      context.lineTo(size * 0.62, 0)
+      context.stroke()
+      context.strokeStyle = '#b98f45'
+      context.lineWidth = 3
+      context.beginPath()
+      context.moveTo(size * 0.2, -13)
+      context.lineTo(size * 0.2, 13)
+      context.stroke()
+    }
+    if (enemy.type === 'void-hart') {
+      context.rotate(facing)
+      context.strokeStyle = '#48e1d0'
+      context.lineWidth = 4
+      for (const side of [-1, 1]) {
+        context.beginPath()
+        context.moveTo(18, side * 20)
+        context.lineTo(48 + pulse, side * 38)
+        context.lineTo(66 + pulse, side * 29)
+        context.moveTo(43 + pulse, side * 34)
+        context.lineTo(51 + pulse, side * 50)
+        context.stroke()
+      }
+    }
+    if (enemy.type === 'prism-witch') {
+      const prism = ['#ff5f74', '#ffb454', '#f4e56b', '#6fe0ac', '#69bfff', '#c982ff']
+      for (let shard = 0; shard < 6; shard += 1) {
+        const angle = enemy.phase * 0.7 + shard / 6 * TAU
+        context.save()
+        context.translate(Math.cos(angle) * (72 + pulse), Math.sin(angle) * (72 + pulse))
+        context.rotate(angle)
+        context.fillStyle = prism[shard]
+        context.fillRect(-5, -5, 10, 10)
+        context.restore()
+      }
+    }
+    if (enemy.type === 'iron-choir') {
+      context.strokeStyle = '#d69468'
+      context.lineWidth = 3
+      for (let ring = 0; ring < 3; ring += 1) {
+        context.beginPath()
+        context.arc(0, 0, 58 + ring * 11 + pulse, enemy.phase + ring, enemy.phase + ring + 2.2)
+        context.stroke()
+      }
+    }
+    if (enemy.type === 'star-eater') {
+      context.fillStyle = 'rgba(1, 2, 8, .82)'
+      context.beginPath()
+      context.arc(0, 0, 31 + pulse, 0, TAU)
+      context.fill()
+      context.strokeStyle = '#b384ff'
+      context.lineWidth = 4
+      context.beginPath()
+      context.arc(0, 0, 45 + pulse, enemy.phase, enemy.phase + 4.4)
+      context.stroke()
+    }
+    context.restore()
   }
 
   private drawCompanions(companions: CompanionState[], players: PlayerState[], predictionSeconds: number) {
@@ -507,10 +586,11 @@ export class GameRenderer {
         context.restore()
         this.drawLabel(x, y + 38, 'SEPARATED', '#ef718e')
       }
+      if (player.specialPulse > 0 && !player.downed) this.drawSpecialPulse(player, x, y)
 
       if (this.hunterSpriteAtlas.complete && this.hunterSpriteAtlas.naturalWidth > 0) {
         const local = player.id === localPlayerId
-        const size = player.character === 'bastion' ? 58 : 54
+        const size = player.character === 'bastion' ? 48 : player.character === 'rapunsel' ? 47 : 44
         const motion = Math.min(1, Math.hypot(player.vx, player.vy) / 170)
         const spriteIndex = CHARACTER_SPRITE_INDEX[player.character]
         const stride = Math.sin(performance.now() / 86 + spriteIndex * 1.91)
@@ -543,8 +623,8 @@ export class GameRenderer {
         const transform = uprightSpriteTransform(player.aim)
         this.drawAtlasSprite(
           this.hunterSpriteAtlas,
-          4,
-          2,
+          3,
+          3,
           spriteIndex,
           spriteX,
           spriteY,
@@ -556,9 +636,9 @@ export class GameRenderer {
         )
         context.restore()
         if (!player.downed && this.weaponSpriteAtlas.complete && this.weaponSpriteAtlas.naturalWidth > 0) {
-          const weaponSize = player.weapon === 'railgun' || player.weapon === 'seeker' ? 42
-            : player.weapon === 'sword' || player.weapon === 'scattergun' ? 39 : 36
-          const weaponOffset = player.weapon === 'sword' ? 17 : 15
+          const weaponSize = player.weapon === 'railgun' ? 29
+            : player.weapon === 'sword' || player.weapon === 'scattergun' || player.weapon === 'seeker' ? 27 : 23
+          const weaponOffset = player.weapon === 'sword' ? 15 : 13
           context.save()
           context.shadowColor = player.color
           context.shadowBlur = local ? 9 : 5
@@ -586,7 +666,6 @@ export class GameRenderer {
           context.lineTo(x - 8, y + 8)
           context.stroke()
         }
-        this.drawHearts(x, y - size * 0.56, player.health, player.maxHealth, player.downed ? '#ef718e' : player.color, 6.5)
         if (player.downed) this.drawBar(x - 24, y - size * 0.39, 48, 3, player.reviveProgress / 2.2, '#f2d479')
         this.drawLabel(x, y + size * 0.43, `${player.name}${player.awakened ? ' ✦' : ''}`, local ? '#f5f1de' : '#b8c4bd')
         continue
@@ -625,10 +704,48 @@ export class GameRenderer {
         context.stroke()
       }
       context.restore()
-      this.drawHearts(x, y - 29, player.health, player.maxHealth, player.downed ? '#ef718e' : player.color, 8)
       if (player.downed) this.drawBar(x - 21, y - 20, 42, 3, player.reviveProgress / 2.2, '#f2d479')
       this.drawLabel(x, y + 31, `${player.name}${player.awakened ? ' ✦' : ''}`, player.id === localPlayerId ? '#f5f1de' : '#b8c4bd')
     }
+  }
+
+  private drawSpecialPulse(player: PlayerState, x: number, y: number) {
+    const context = this.context
+    const duration = player.character === 'rapunsel' ? 0.72 : 0.52
+    const progress = Math.max(0, Math.min(1, 1 - player.specialPulse / duration))
+    const alpha = Math.max(0, 1 - progress)
+    context.save()
+    context.translate(x, y)
+    context.lineCap = 'square'
+    if (player.character === 'rapunsel') {
+      for (let strand = 0; strand < 4; strand += 1) {
+        const radius = 38 + strand * 13 + progress * 48
+        const start = player.aim + progress * TAU * 1.7 + strand * 1.5
+        context.strokeStyle = strand % 2 === 0 ? `rgba(126, 76, 45, ${alpha * 0.95})` : `rgba(230, 183, 125, ${alpha * 0.75})`
+        context.lineWidth = Math.max(2, 7 - strand)
+        context.beginPath()
+        context.arc(0, 0, radius, start, start + 1.65)
+        context.stroke()
+      }
+      context.strokeStyle = `rgba(246, 218, 172, ${alpha * 0.8})`
+      context.lineWidth = 2
+      context.beginPath()
+      context.arc(0, 0, 124 * (0.65 + progress * 0.35), 0, TAU)
+      context.stroke()
+    } else {
+      context.strokeStyle = player.color
+      context.globalAlpha = alpha * 0.8
+      context.lineWidth = 2
+      context.beginPath()
+      context.arc(0, 0, 34 + progress * 118, 0, TAU)
+      context.stroke()
+      context.globalAlpha = alpha * 0.18
+      context.fillStyle = player.color
+      context.beginPath()
+      context.arc(0, 0, 28 + progress * 88, 0, TAU)
+      context.fill()
+    }
+    context.restore()
   }
 
   private captureEffects(events: GameEvent[]) {
@@ -754,13 +871,6 @@ export class GameRenderer {
     context.fillRect(x, y, width, height)
     context.fillStyle = color
     context.fillRect(x, y, width * Math.max(0, Math.min(1, ratio)), height)
-  }
-
-  private drawHearts(x: number, y: number, health: number, maxHealth: number, color: string, size: number) {
-    const count = heartSlots(maxHealth)
-    const spacing = size + 2
-    const startX = x - ((count - 1) * spacing) / 2
-    for (let slot = 0; slot < count; slot += 1) this.drawHeartIcon(startX + slot * spacing, y, size, heartFill(health, slot), color)
   }
 
   private traceHeart(x: number, y: number, size: number) {
