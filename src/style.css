@@ -109,6 +109,8 @@ body::before {
 .section-heading > span { color: var(--gold); font: 400 27px 'Oswald', sans-serif; }
 .section-heading h2 { margin: 0 0 5px; color: var(--ink); font: 500 20px 'Oswald', sans-serif; letter-spacing: .06em; }
 .section-heading p { margin: 0; color: var(--muted); font-size: 9px; }
+.random-loadout-button { margin-left: auto; align-self: center; padding: 9px 12px; border: 1px solid rgba(242,212,121,.32); color: var(--gold); background: rgba(9,20,16,.78); font-size: 8px; letter-spacing: .1em; transition: border-color .15s, transform .15s, color .15s; }
+.random-loadout-button:hover { transform: translateY(-2px); border-color: var(--gold); color: #fff0bd; }
 .character-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .selection-card { position: relative; border: 1px solid var(--line); background: rgba(10, 22, 18, .7); text-align: left; transition: border-color .15s, transform .15s, background .15s; }
 .selection-card:hover { border-color: rgba(242, 212, 121, .42); transform: translateY(-2px); }
@@ -304,6 +306,8 @@ body::before {
   .landing-footer { gap: 15px; align-items: flex-start; flex-direction: column; justify-content: center; }
   .lobby-heading span { display: none; }
   .lobby-layout { padding-top: 30px; }
+  .section-heading { flex-wrap: wrap; }
+  .random-loadout-button { width: 100%; margin-left: 46px; }
   .character-grid, .weapon-grid { grid-template-columns: 1fr; }
   .character-card { min-height: 220px; }
   .weapon-card { grid-template-columns: 38px 1fr; }

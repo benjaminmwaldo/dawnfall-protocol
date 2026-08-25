@@ -259,7 +259,7 @@ class DawnfallApp {
         </header>
         <div class="lobby-layout">
           <section class="loadout-column">
-            <div class="section-heading"><span>01</span><div><h2>CHOOSE YOUR HUNTER</h2><p>Base abilities define your role before the first perk drops.</p></div></div>
+            <div class="section-heading"><span>01</span><div><h2>CHOOSE YOUR HUNTER</h2><p>Base abilities define your role before the first perk drops.</p></div><button class="random-loadout-button" data-random-character data-testid="random-character">✦ RANDOM HUNTER</button></div>
             <div class="character-grid">
               ${CHARACTERS.map((character) => `
                 <button class="selection-card character-card ${this.localConfig.character === character.id ? 'selected' : ''}" data-character="${character.id}" style="--accent:${character.color}">
@@ -268,7 +268,7 @@ class DawnfallApp {
                   <span class="card-copy"><small>${character.epithet}</small><strong>${character.name}</strong><em>${character.description}</em><b>${character.baseAbility}</b></span>
                 </button>`).join('')}
             </div>
-            <div class="section-heading compact"><span>02</span><div><h2>CHOOSE YOUR WEAPON</h2><p>Every hunter can carry every weapon.</p></div></div>
+            <div class="section-heading compact"><span>02</span><div><h2>CHOOSE YOUR WEAPON</h2><p>Every hunter can carry every weapon.</p></div><button class="random-loadout-button" data-random-weapon data-testid="random-weapon">⌁ RANDOM WEAPON</button></div>
             <div class="weapon-grid">
               ${WEAPONS.map((weapon) => `
                 <button class="selection-card weapon-card ${this.localConfig.weapon === weapon.id ? 'selected' : ''}" data-weapon="${weapon.id}">
@@ -315,6 +315,16 @@ class DawnfallApp {
       this.localConfig.weapon = button.dataset.weapon as PlayerConfig['weapon']
       this.updateLocalLoadout()
     }))
+    document.querySelector<HTMLElement>('[data-random-character]')?.addEventListener('click', () => {
+      const choices = CHARACTERS.filter((character) => character.id !== this.localConfig.character)
+      this.localConfig.character = choices[Math.floor(Math.random() * choices.length)].id
+      this.updateLocalLoadout()
+    })
+    document.querySelector<HTMLElement>('[data-random-weapon]')?.addEventListener('click', () => {
+      const choices = WEAPONS.filter((weapon) => weapon.id !== this.localConfig.weapon)
+      this.localConfig.weapon = choices[Math.floor(Math.random() * choices.length)].id
+      this.updateLocalLoadout()
+    })
     document.querySelectorAll<HTMLElement>('[data-duration]').forEach((button) => button.addEventListener('click', () => {
       this.duration = Number(button.dataset.duration)
       this.renderLobby()
