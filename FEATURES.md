@@ -69,3 +69,4 @@ This is the cumulative implementation checklist for playtest feedback. New reque
 - [x] Replace awkward portrait-sized upgrade backgrounds with full-screen splash compositions and right-weighted character framing
 - [x] Replace chibi gameplay hunters with slimmer top-down pixel silhouettes closer to the enemy rendering language
 - [x] Replace overly detailed gameplay weapons with smaller, simpler pixel silhouettes that never cover the hunter
+- [x] Align Rapunsel's selection portrait with the gothic hunter-card art direction and consistently redesign all five splash scenes around the same petite adult English face and smaller-chested build
