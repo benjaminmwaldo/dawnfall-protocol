@@ -8,10 +8,12 @@ An original 1–4 player browser survival roguelite prototype inspired by the ac
 - Choose one of eight hunters, ten weapons, and three battlefields—or randomize any of them.
 - Fill one shared squad XP track, then let every active hunter choose simultaneously from three personal upgrades with three rerolls.
 - Shape individual builds from 24 one-rank common transformations plus five signature upgrades for every hunter, including a unique combat companion.
-- Revive downed teammates with E before their fifteen-second bleedout ends.
+- Revive downed teammates with E during a generous twenty-four-second rescue window; multiple rescuers combine their effort. Solo hunters and the last surviving hunter skip unwinnable bleedout waits.
 - If you are eliminated while allies remain, cycle between them with Q/E or the spectator controls.
 - Fight across the open Gloamreach Moor, the volcanic Emberfall Ruins, or the nine-room Reliquary dungeon.
-- Use three map-specific structures to heal, fire on enemies, or accelerate your weapon.
+- Use three map-specific structures to generate heart crystals, fire on enemies, or accelerate your weapon.
+- Read damage in half-heart units: every hunter begins with five hearts, Bastion begins with a sixth, and maximum-heart upgrades expand each personal build.
+- Regenerate one heart every minute or collect a one-heart crystal that forms at each healing structure on its own visible sixty-second charge ring.
 - In the Reliquary, players, enemies, companions, and projectiles collide with solid walls while monsters navigate through room doors.
 - Fight eight regular enemy archetypes and four scheduled bosses; each boss grants a squad-wide relic while every ordinary upgrade stays personal.
 - Select a compressed four-minute field test or the intended twenty-minute run.
@@ -20,9 +22,13 @@ An original 1–4 player browser survival roguelite prototype inspired by the ac
 
 The interface uses original painterly dark-fantasy illustration, while the battlefield deliberately switches to crisp, limited-palette pixel art so static sprites remain readable in motion. Characters, creatures, bosses, and interactive structures share hard-edged runtime atlases. Every moving model uses a centered sprite authored facing east—the canvas angle-zero direction. Right-facing angles rotate normally; left-facing angles fold back into an upright range and mirror the sprite, keeping every model right-side-up without breaking its aim vector. Lightweight bob, stride, and recoil transforms add motion without requiring large animation sheets. The production-ready WebP atlases live in `public/art`; shared colors and silhouettes keep the illustrated menus and pixel-art combat grounded in one world.
 
+Every upgrade draft also reveals one of five alternate-life portraits and one of fifty stable personality details for the chosen hunter. A corner control hides the draft UI and presents the portrait at its native aspect ratio without blurry full-screen stretching while keeping the character detail readable.
+
 ## Multiplayer model
 
 The host runs the authoritative simulation and sends compact state snapshots to up to three guests through PeerJS/WebRTC. GitHub Pages only hosts the static client; PeerJS Cloud brokers the initial connection and gameplay traffic then travels over WebRTC data channels.
+
+Co-op deliberately applies pressure in several ways: larger and faster waves, tougher enemies, denser boss volleys, shorter boss ability cycles, and extra reinforcements. Hunters separated from every ally for several seconds are marked, pursued faster, and take an extra half-heart per hit. Staying together avoids that penalty, shared crystals naturally go to the most wounded nearby hunter, and coordinated revivers stack their rescue speed. Ally-only upgrades are removed from solo drafts.
 
 Because the free broker uses STUN rather than a dedicated TURN relay, some strict corporate, military, school, or symmetric-NAT networks may block a connection. Home networks and ordinary mobile hotspots are the primary playtest target.
 

@@ -46,6 +46,8 @@ export interface PlayerState extends PlayerConfig {
   aim: number
   health: number
   maxHealth: number
+  heartRegen: number
+  isolatedFor: number
   ammo: number
   maxAmmo: number
   reloadRemaining: number
@@ -147,6 +149,8 @@ export interface StructureState {
   y: number
   radius: number
   cooldown: number
+  crystalCharge: number
+  crystalReady: boolean
 }
 
 export interface MapWall {

@@ -1,4 +1,5 @@
-import { BOSS_NAMES, UPGRADES, isBoss, teamBuffByBoss, upgradeById, weaponById } from './data'
+import { BOSS_NAMES, UPGRADES, characterById, isBoss, teamBuffByBoss, upgradeById, weaponById } from './data'
+import { HALF_HEART_VALUE, HEAL_CRYSTAL_SECONDS, HEART_REGEN_SECONDS, HEART_VALUE, quantizeEnemyDamage } from './health'
 import { mapById, type MapDefinition } from './maps'
 import { SeededRandom } from './random'
 import type {
@@ -47,6 +48,7 @@ const PET_UPGRADES: Partial<Record<string, CompanionKind>> = {
   gravewing: 'gravewing', ashkit: 'ashkit', 'aegis-hound': 'aegis-hound', 'mercy-moth': 'mercy-moth',
   shadecat: 'shadecat', 'storm-wisp': 'storm-wisp', thornling: 'thornling', sunbird: 'sunbird',
 }
+const MULTIPLAYER_ONLY_UPGRADES = new Set(['sanctuary', 'merciful-hand', 'last-rite'])
 const COMPANION_ATTACKS: Record<CompanionKind, { cooldown: number; damage: number; speed: number; range: number; pierce: number; chain: number; burn: boolean; color: string }> = {
   gravewing: { cooldown: 1.05, damage: 90, speed: 665, range: 470, pierce: 0, chain: 1, burn: false, color: '#f2d479' },
   ashkit: { cooldown: 0.72, damage: 42, speed: 560, range: 350, pierce: 0, chain: 1, burn: true, color: '#ff735c' },
@@ -110,6 +112,7 @@ export class GameEngine {
     if (this.completeVictoryIfReady()) return this.snapshot
 
     this.updatePlayers(delta, inputs)
+    this.resolveUnrevivablePlayers()
     this.updateCompanions(delta)
     this.updateStructures(delta)
     this.handleSpawns(delta, inputs)
@@ -147,8 +150,8 @@ export class GameEngine {
     const current = rank(player, upgradeId)
     if (current >= definition.maxLevel) return false
     player.perks[upgradeId] = current + 1
-    if (upgradeId === 'vitality') this.addMaximumHealth(player, 50)
-    if (upgradeId === 'unyielding') this.addMaximumHealth(player, 60)
+    if (upgradeId === 'vitality') this.addMaximumHealth(player, HEART_VALUE)
+    if (upgradeId === 'unyielding') this.addMaximumHealth(player, HEART_VALUE * 2)
     if (upgradeId === 'deep-mag') this.addMagazine(player, 0.5)
     if (upgradeId === 'charged-mag') this.addMagazine(player, 0.4)
     const companionKind = PET_UPGRADES[upgradeId]
@@ -189,7 +192,7 @@ export class GameEngine {
 
   private createPlayer(config: PlayerConfig, index: number, partySize: number): PlayerState {
     const weapon = weaponById(config.weapon)
-    const maxHealth = config.character === 'bastion' ? 125 : config.character === 'warden' ? 110 : config.character === 'briar' ? 115 : config.character === 'seraph' ? 105 : 100
+    const maxHealth = HEART_VALUE * characterById(config.character).startingHearts
     const angle = (Math.PI * 2 * index) / Math.max(1, 4)
     return {
       ...config,
@@ -200,6 +203,8 @@ export class GameEngine {
       aim: 0,
       health: maxHealth,
       maxHealth,
+      heartRegen: 0,
+      isolatedFor: 0,
       ammo: weapon.magazine,
       maxAmmo: weapon.magazine,
       reloadRemaining: 0,
@@ -208,7 +213,7 @@ export class GameEngine {
       invulnerable: 0,
       downed: false,
       eliminated: false,
-      downTimer: 15,
+      downTimer: partySize > 1 ? 24 : 0,
       reviveProgress: 0,
       shotCount: 0,
       kills: 0,
@@ -224,7 +229,13 @@ export class GameEngine {
   }
 
   private createStructures(): StructureState[] {
-    return this.map.structures.map((structure) => ({ ...structure, id: this.entityId++, cooldown: structure.effect === 'turret' ? 0.8 : 0 }))
+    return this.map.structures.map((structure) => ({
+      ...structure,
+      id: this.entityId++,
+      cooldown: structure.effect === 'turret' ? 0.8 : 0,
+      crystalCharge: 0,
+      crystalReady: false,
+    }))
   }
 
   private updatePlayers(dt: number, inputs: ReadonlyMap<string, InputState>) {
@@ -234,12 +245,22 @@ export class GameEngine {
       player.hasteRemaining = Math.max(0, player.hasteRemaining - dt)
       if (player.eliminated) continue
       if (player.downed) {
+        player.isolatedFor = 0
         player.downTimer = Math.max(0, player.downTimer - dt)
         if (player.downTimer <= 0) {
           player.eliminated = true
           player.reviveProgress = 0
         }
         continue
+      }
+
+      player.heartRegen += dt
+      if (player.heartRegen >= HEART_REGEN_SECONDS) {
+        player.heartRegen %= HEART_REGEN_SECONDS
+        if (player.health < player.maxHealth) {
+          this.heal(player, HEART_VALUE)
+          this.pushEvent('buff', player.x, player.y, `${player.name.toUpperCase()} REGAINED A HEART`)
+        }
       }
 
       const input = inputs.get(player.id) ?? EMPTY_INPUT
@@ -261,6 +282,12 @@ export class GameEngine {
       player.vy = moveY * speed
       this.moveCircle(player, player.vx * dt, player.vy * dt, 11)
 
+      const inFormation = this.snapshot.players.length === 1 || this.snapshot.players.some((ally) => ally.id !== player.id
+        && !ally.downed && !ally.eliminated && distanceSquared(player.x, player.y, ally.x, ally.y) < 320 * 320)
+      const previousIsolation = player.isolatedFor
+      player.isolatedFor = inFormation ? Math.max(0, player.isolatedFor - dt * 3) : player.isolatedFor + dt
+      if (previousIsolation < 3 && player.isolatedFor >= 3) this.pushEvent('hurt', player.x, player.y, `${player.name.toUpperCase()} IS SEPARATED · THE NIGHT IS HUNTING HER`)
+
       if (player.reloadRemaining > 0) {
         player.reloadRemaining -= dt
         if (player.reloadRemaining <= 0) {
@@ -277,6 +304,17 @@ export class GameEngine {
         + (awakenedWarden ? 0.55 + rank(awakenedWarden, 'lantern-grace') * 2 : 0)
         + (player.character === 'seraph' ? rank(player, 'dawn-armor') * 1.5 : 0)
       if (regeneration > 0) player.health = Math.min(player.maxHealth, player.health + dt * regeneration)
+    }
+  }
+
+  private resolveUnrevivablePlayers() {
+    const standing = this.snapshot.players.some((player) => !player.downed && !player.eliminated)
+    if (standing) return
+    for (const player of this.snapshot.players.filter((hunter) => hunter.downed && !hunter.eliminated)) {
+      player.downed = false
+      player.eliminated = true
+      player.downTimer = 0
+      player.reviveProgress = 0
     }
   }
 
@@ -428,8 +466,24 @@ export class GameEngine {
   private updateStructures(dt: number) {
     for (const structure of this.snapshot.structures) {
       if (structure.effect === 'heal') {
-        for (const player of this.snapshot.players) {
-          if (!player.downed && !player.eliminated && distanceSquared(player.x, player.y, structure.x, structure.y) < structure.radius * structure.radius) player.health = Math.min(player.maxHealth, player.health + dt * 2.2)
+        if (!structure.crystalReady) {
+          structure.crystalCharge = Math.min(HEAL_CRYSTAL_SECONDS, structure.crystalCharge + dt)
+          if (structure.crystalCharge >= HEAL_CRYSTAL_SECONDS) {
+            structure.crystalReady = true
+            this.pushEvent('buff', structure.x, structure.y, 'A HEART CRYSTAL HAS FORMED')
+          }
+        }
+        if (structure.crystalReady) {
+          const recipient = this.snapshot.players
+            .filter((player) => !player.downed && !player.eliminated && player.health < player.maxHealth
+              && distanceSquared(player.x, player.y, structure.x, structure.y) < structure.radius * structure.radius)
+            .sort((first, second) => first.health / first.maxHealth - second.health / second.maxHealth)[0]
+          if (recipient) {
+            this.heal(recipient, HEART_VALUE)
+            structure.crystalReady = false
+            structure.crystalCharge = 0
+            this.pushEvent('buff', structure.x, structure.y, `${recipient.name.toUpperCase()} CLAIMED A HEART CRYSTAL`)
+          }
         }
       }
       if (structure.effect === 'turret') {
@@ -466,9 +520,10 @@ export class GameEngine {
 
     this.spawnTimer -= dt
     if (this.spawnTimer > 0 || this.snapshot.enemies.length >= 230) return
-    const playerScale = 0.75 + this.snapshot.players.length * 0.44
+    const multiplayerPressure = Math.max(0, this.snapshot.players.length - 1)
+    const playerScale = 0.75 + this.snapshot.players.length * 0.58
     const bossPressure = this.snapshot.enemies.some((enemy) => isBoss(enemy.type)) ? 0.72 : 1
-    const count = Math.min(8, Math.max(2, Math.floor((playerScale + progress * 5) * bossPressure)))
+    const count = Math.min(12, Math.max(2, Math.floor((playerScale + progress * 5 + multiplayerPressure * 0.8) * bossPressure)))
     const pool: EnemyType[] = ['thrall', 'thrall']
     if (progress > 0.08) pool.push('skitter', 'leech')
     if (progress > 0.2) pool.push('spitter', 'wraith')
@@ -514,21 +569,22 @@ export class GameEngine {
   private spawnEnemy(type: EnemyType, inputs: ReadonlyMap<string, InputState>, finale = false) {
     const spawn = this.findOffscreenSpawn(inputs)
     const progress = 1 - this.snapshot.timeRemaining / this.snapshot.duration
-    const regularScale = 1 + progress * 1.6 + Math.max(0, this.snapshot.players.length - 1) * 0.34
-    const bossScale = (0.72 + this.snapshot.players.length * 0.3) * (1 + progress * 0.38)
+    const multiplayerPressure = Math.max(0, this.snapshot.players.length - 1)
+    const regularScale = 1 + progress * 1.6 + multiplayerPressure * 0.42
+    const bossScale = (0.72 + this.snapshot.players.length * 0.36) * (1 + progress * 0.38)
     const stats: Record<EnemyType, { hp: number; radius: number; speed: number; damage: number }> = {
-      thrall: { hp: 34, radius: 13, speed: 58, damage: 12 },
-      skitter: { hp: 22, radius: 9, speed: 106, damage: 9 },
-      spitter: { hp: 58, radius: 15, speed: 48, damage: 10 },
-      bulwark: { hp: 225, radius: 23, speed: 35, damage: 20 },
-      wraith: { hp: 48, radius: 15, speed: 76, damage: 11 },
-      charger: { hp: 88, radius: 17, speed: 70, damage: 18 },
-      hexer: { hp: 72, radius: 16, speed: 43, damage: 11 },
-      leech: { hp: 30, radius: 11, speed: 92, damage: 8 },
-      tollkeeper: { hp: 4400, radius: 58, speed: 30, damage: 24 },
-      broodmother: { hp: 5000, radius: 62, speed: 34, damage: 22 },
-      graveknight: { hp: 5900, radius: 60, speed: 42, damage: 28 },
-      'eclipse-eye': { hp: 6800, radius: 64, speed: 36, damage: 26 },
+      thrall: { hp: 34, radius: 13, speed: 58, damage: HALF_HEART_VALUE },
+      skitter: { hp: 22, radius: 9, speed: 106, damage: HALF_HEART_VALUE },
+      spitter: { hp: 58, radius: 15, speed: 48, damage: HALF_HEART_VALUE },
+      bulwark: { hp: 225, radius: 23, speed: 35, damage: HEART_VALUE },
+      wraith: { hp: 48, radius: 15, speed: 76, damage: HALF_HEART_VALUE },
+      charger: { hp: 88, radius: 17, speed: 70, damage: HEART_VALUE },
+      hexer: { hp: 72, radius: 16, speed: 43, damage: HALF_HEART_VALUE },
+      leech: { hp: 30, radius: 11, speed: 92, damage: HALF_HEART_VALUE },
+      tollkeeper: { hp: 4400, radius: 58, speed: 30, damage: HEART_VALUE },
+      broodmother: { hp: 5000, radius: 62, speed: 34, damage: HEART_VALUE },
+      graveknight: { hp: 5900, radius: 60, speed: 42, damage: HEART_VALUE + HALF_HEART_VALUE },
+      'eclipse-eye': { hp: 6800, radius: 64, speed: 36, damage: HEART_VALUE },
     }
     const base = stats[type]
     const scale = isBoss(type) ? bossScale * (finale ? FINAL_BOSS_HEALTH_MULTIPLIER : 1) : regularScale
@@ -536,7 +592,7 @@ export class GameEngine {
       id: this.entityId++, type,
       x: spawn.x, y: spawn.y,
       vx: 0, vy: 0, health: base.hp * scale, maxHealth: base.hp * scale, radius: base.radius,
-      speed: base.speed * (finale ? 1.1 : 1), damage: base.damage * (finale ? 1.2 : 1), attackCooldown: this.random.range(0, finale ? 0.18 : 0.45),
+      speed: base.speed * (1 + multiplayerPressure * 0.06) * (finale ? 1.1 : 1), damage: base.damage + (finale ? HALF_HEART_VALUE : 0), attackCooldown: this.random.range(0, finale ? 0.18 : 0.45),
       burn: 0, burnTick: 0.5, slow: 0, phase: this.random.range(0, Math.PI * 2),
       abilityCooldown: isBoss(type) ? this.random.range(finale ? 0.45 : 1, finale ? 1.1 : 2) : 0,
       summonCooldown: isBoss(type) ? this.random.range(finale ? 1.8 : 3.2, finale ? 3 : 4.8) : 0,
@@ -549,8 +605,10 @@ export class GameEngine {
   }
 
   private summonBossAdds(types: EnemyType[], inputs: ReadonlyMap<string, InputState>) {
-    if (this.snapshot.enemies.length + types.length >= 230) return
-    for (const type of types) this.spawnEnemy(type, inputs)
+    const reinforcements = [...types]
+    for (let playerIndex = 1; playerIndex < this.snapshot.players.length; playerIndex += 1) reinforcements.push(types[(playerIndex - 1) % types.length])
+    if (this.snapshot.enemies.length + reinforcements.length >= 230) return
+    for (const type of reinforcements) this.spawnEnemy(type, inputs)
   }
 
   private updateEnemies(dt: number, inputs: ReadonlyMap<string, InputState>) {
@@ -582,10 +640,13 @@ export class GameEngine {
       let angle = this.navigationAngle(enemy.x, enemy.y, target.x, target.y, targetAngle)
       const distance = Math.sqrt(distanceSquared(enemy.x, enemy.y, target.x, target.y))
       let speed = enemy.speed * (enemy.slow > 0 ? 0.48 : 1)
-      const bossCadence = enemy.finale ? FINAL_BOSS_CADENCE : 1
+      const multiplayerPressure = Math.max(0, this.snapshot.players.length - 1)
+      const bossCadence = (enemy.finale ? FINAL_BOSS_CADENCE : 1) * Math.pow(0.92, multiplayerPressure)
+      const volleyBonus = multiplayerPressure * 2
       if (enemy.type === 'wraith') angle += Math.sin(enemy.phase * 3) * 0.32
       if (enemy.type === 'charger' && enemy.phase % 4.2 < 0.9) speed *= 2.25
       if (enemy.type === 'leech') speed *= 1.12
+      if (target.isolatedFor >= 3 && this.snapshot.players.length > 1) speed *= 1.28
 
       if ((enemy.type === 'spitter' || enemy.type === 'hexer') && hasSight && distance < (enemy.type === 'hexer' ? 410 : 335)) {
         speed = distance < 220 ? -enemy.speed * 0.5 : 0
@@ -597,7 +658,7 @@ export class GameEngine {
 
       if (enemy.type === 'tollkeeper') {
         if (enemy.attackCooldown <= 0 && hasSight && distance < 900) {
-          for (let shot = 0; shot < 12; shot += 1) this.spawnEnemyProjectile(enemy, shot / 12 * Math.PI * 2 + enemy.phase * 0.42, 118, 9)
+          for (let shot = 0; shot < 12 + volleyBonus; shot += 1) this.spawnEnemyProjectile(enemy, shot / (12 + volleyBonus) * Math.PI * 2 + enemy.phase * 0.42, 118, HALF_HEART_VALUE)
           enemy.attackCooldown = 3.3 * bossCadence
         }
         if ((enemy.abilityCooldown ?? 0) <= 0) {
@@ -615,7 +676,7 @@ export class GameEngine {
       if (enemy.type === 'broodmother') {
         if (hasSight && distance < 260) angle = targetAngle + Math.PI
         if (enemy.attackCooldown <= 0 && hasSight && distance < 940) {
-          for (let shot = 0; shot < 10; shot += 1) this.spawnEnemyProjectile(enemy, shot / 10 * Math.PI * 2 - enemy.phase * 0.5, 108, 8)
+          for (let shot = 0; shot < 10 + volleyBonus; shot += 1) this.spawnEnemyProjectile(enemy, shot / (10 + volleyBonus) * Math.PI * 2 - enemy.phase * 0.5, 108, HALF_HEART_VALUE)
           enemy.attackCooldown = 2.85 * bossCadence
         }
         if ((enemy.abilityCooldown ?? 0) <= 0) {
@@ -632,7 +693,7 @@ export class GameEngine {
 
       if (enemy.type === 'graveknight') {
         if (enemy.attackCooldown <= 0 && hasSight && distance < 850) {
-          for (let shot = -2; shot <= 2; shot += 1) this.spawnEnemyProjectile(enemy, targetAngle + shot * 0.16, 145, 11)
+          for (let shot = -2 - multiplayerPressure; shot <= 2 + multiplayerPressure; shot += 1) this.spawnEnemyProjectile(enemy, targetAngle + shot * 0.13, 145, HALF_HEART_VALUE)
           enemy.attackCooldown = 2.4 * bossCadence
         }
         if ((enemy.abilityCooldown ?? 0) <= 0) {
@@ -651,7 +712,7 @@ export class GameEngine {
         if (hasSight) angle = targetAngle + (enemy.strafeDirection ?? 1) * (distance > 520 ? 0.55 : distance < 300 ? 2.2 : 1.35)
         speed *= 1.2
         if (enemy.attackCooldown <= 0 && hasSight && distance < 980) {
-          for (let shot = 0; shot < 16; shot += 1) this.spawnEnemyProjectile(enemy, shot / 16 * Math.PI * 2 + enemy.phase * 0.7, 105, 10)
+          for (let shot = 0; shot < 16 + volleyBonus; shot += 1) this.spawnEnemyProjectile(enemy, shot / (16 + volleyBonus) * Math.PI * 2 + enemy.phase * 0.7, 105, HALF_HEART_VALUE)
           enemy.attackCooldown = 2.35 * bossCadence
         }
         if ((enemy.abilityCooldown ?? 0) <= 0) {
@@ -688,7 +749,7 @@ export class GameEngine {
   }
 
   private spawnEnemyProjectile(enemy: EnemyState, angle: number, speed: number, damage: number) {
-    this.snapshot.projectiles.push({ id: this.entityId++, ownerId: `enemy-${enemy.id}`, x: enemy.x, y: enemy.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, radius: 6.5, damage, life: 4.5, pierce: 0, bounces: 0, enemy: true, chain: 0, burn: false, color: '#ef718e' })
+    this.snapshot.projectiles.push({ id: this.entityId++, ownerId: `enemy-${enemy.id}`, x: enemy.x, y: enemy.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, radius: 6.5, damage: quantizeEnemyDamage(damage), life: 4.5, pierce: 0, bounces: 0, enemy: true, chain: 0, burn: false, color: '#ef718e' })
   }
 
   private updateProjectiles(dt: number) {
@@ -859,7 +920,9 @@ export class GameEngine {
     const auraReduction = bastion ? (bastion.awakened ? 0.32 : 0.18) + rank(bastion, 'aegis-lattice') * 0.12 : 0
     const personalReduction = rank(player, 'steadfast') * 0.2 + rank(player, 'dawn-armor') * 0.2
       + (player.reloadRemaining > 0 ? rank(player, 'shielded-mag') * 0.35 : 0)
-    const finalDamage = amount * Math.max(0.3, 1 - auraReduction - personalReduction)
+    const separationPenalty = player.isolatedFor >= 3 && this.snapshot.players.length > 1 ? HALF_HEART_VALUE : 0
+    const mitigated = quantizeEnemyDamage(amount) * Math.max(0.3, 1 - auraReduction - personalReduction) + separationPenalty
+    const finalDamage = Math.max(HALF_HEART_VALUE, Math.floor(mitigated / HALF_HEART_VALUE) * HALF_HEART_VALUE)
     player.health -= finalDamage
     player.invulnerable = HIT_INVULNERABILITY + rank(player, 'kinetic-shell') * KINETIC_SHELL_BONUS
     this.pushEvent('hurt', player.x, player.y)
@@ -881,8 +944,22 @@ export class GameEngine {
       return
     }
     player.health = 0
+    const standingAlly = this.snapshot.players.some((ally) => ally.id !== player.id && !ally.downed && !ally.eliminated)
+    if (!standingAlly) {
+      player.downed = false
+      player.eliminated = true
+      player.downTimer = 0
+      player.reviveProgress = 0
+      for (const stranded of this.snapshot.players.filter((ally) => ally.downed && !ally.eliminated)) {
+        stranded.downed = false
+        stranded.eliminated = true
+        stranded.downTimer = 0
+        stranded.reviveProgress = 0
+      }
+      return
+    }
     player.downed = true
-    player.downTimer = 15 + rank(player, 'unyielding') * 8
+    player.downTimer = 24 + rank(player, 'unyielding') * 8
     player.reviveProgress = 0
   }
 
@@ -912,22 +989,23 @@ export class GameEngine {
 
   private handleRevives(dt: number, inputs: ReadonlyMap<string, InputState>) {
     for (const downed of this.snapshot.players.filter((player) => player.downed && !player.eliminated)) {
-      const reviver = this.snapshot.players.find((player) => {
+      const revivers = this.snapshot.players.filter((player) => {
         const input = inputs.get(player.id) ?? EMPTY_INPUT
         return !player.downed && !player.eliminated && input.interact && distanceSquared(player.x, player.y, downed.x, downed.y) < 68 * 68
       })
-      if (!reviver) { downed.reviveProgress = Math.max(0, downed.reviveProgress - dt * 0.35); continue }
-      const reviveSpeed = (reviver.character === 'warden' ? 1.5 : 1) * (rank(reviver, 'merciful-hand') > 0 ? 2 : 1)
+      if (revivers.length === 0) { downed.reviveProgress = Math.max(0, downed.reviveProgress - dt * 0.35); continue }
+      const primaryReviver = revivers[0]
+      const reviveSpeed = revivers.reduce((total, reviver) => total + (reviver.character === 'warden' ? 1.5 : 1) * (rank(reviver, 'merciful-hand') > 0 ? 2 : 1), 0)
       downed.reviveProgress += dt * reviveSpeed
       if (downed.reviveProgress >= 2.2) {
         downed.downed = false
-        const lastRite = rank(reviver, 'last-rite')
+        const lastRite = Math.max(...revivers.map((reviver) => rank(reviver, 'last-rite')))
         downed.health = downed.maxHealth * (lastRite > 0 ? 1 : 0.5)
-        downed.downTimer = 15 + rank(downed, 'unyielding') * 8
+        downed.downTimer = 24 + rank(downed, 'unyielding') * 8
         downed.reviveProgress = 0
         downed.invulnerable = 2 + lastRite
         downed.hasteRemaining = lastRite > 0 ? 6 : 0
-        this.pushEvent('revive', downed.x, downed.y, `${reviver.name.toUpperCase()} PULLED ${downed.name.toUpperCase()} BACK`)
+        this.pushEvent('revive', downed.x, downed.y, `${primaryReviver.name.toUpperCase()}${revivers.length > 1 ? ' AND THE SQUAD' : ''} PULLED ${downed.name.toUpperCase()} BACK`)
       }
     }
   }
@@ -949,7 +1027,9 @@ export class GameEngine {
   private createUpgradeChoices(player: PlayerState, excludedIds: ReadonlySet<string> = new Set()): string[] {
     const swordIncompatible = new Set(['quick-hands', 'deep-mag', 'relentless'])
     const available = (upgrade: (typeof UPGRADES)[number]) => rank(player, upgrade.id) < upgrade.maxLevel
-      && !excludedIds.has(upgrade.id) && !(player.weapon === 'sword' && swordIncompatible.has(upgrade.id))
+      && !excludedIds.has(upgrade.id)
+      && !(player.weapon === 'sword' && swordIncompatible.has(upgrade.id))
+      && !(this.snapshot.players.length === 1 && MULTIPLAYER_ONLY_UPGRADES.has(upgrade.id))
     const signaturePool = UPGRADES.filter((upgrade) => upgrade.character === player.character && available(upgrade))
     const weaponPool = UPGRADES.filter((upgrade) => upgrade.weapon === player.weapon && available(upgrade))
     const commonPool = UPGRADES.filter((upgrade) => upgrade.category === 'common' && available(upgrade))
@@ -969,7 +1049,7 @@ export class GameEngine {
   private rewardBoss(type: BossType) {
     const buff = teamBuffByBoss(type)
     this.snapshot.teamBuffs[buff.id] = (this.snapshot.teamBuffs[buff.id] ?? 0) + 1
-    if (type === 'broodmother') for (const player of this.snapshot.players) this.addMaximumHealth(player, 25)
+    if (type === 'broodmother') for (const player of this.snapshot.players) this.addMaximumHealth(player, HEART_VALUE)
     if (this.snapshot.players.some((player) => !player.awakened)) this.awakenSquad()
     this.pushEvent('buff', undefined, undefined, `SQUAD RELIC · ${buff.name.toUpperCase()} — ${buff.description.toUpperCase()}`)
   }

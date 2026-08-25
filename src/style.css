@@ -176,16 +176,20 @@ body::before {
 .xp-track { height: 2px; background: rgba(255,255,255,.1); }
 .xp-track i { display: block; width: 0; height: 100%; background: var(--gold); transition: width .2s; }
 .mute-button { position: absolute; right: 22px; top: 18px; pointer-events: auto; border: 1px solid var(--line); background: rgba(5,12,10,.7); color: var(--muted); padding: 9px 11px; font-size: 7px; letter-spacing: .09em; cursor: pointer; }
-.team-hud { position: absolute; left: 20px; top: 66px; width: 190px; display: grid; gap: 6px; }
-.team-chip { display: grid; grid-template-columns: 28px 1fr 28px; align-items: center; gap: 8px; padding: 7px 8px; background: rgba(4,11,9,.7); border-left: 1px solid rgba(255,255,255,.1); }
+.team-hud { position: absolute; left: 20px; top: 66px; width: 220px; display: grid; gap: 6px; }
+.team-chip { display: grid; grid-template-columns: 28px 1fr 38px; align-items: center; gap: 8px; padding: 7px 8px; background: rgba(4,11,9,.7); border-left: 1px solid rgba(255,255,255,.1); }
 .team-chip > span { width: 25px; height: 25px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--player); color: var(--player); font: 12px Georgia, serif; }
 .team-chip div { min-width: 0; }
 .team-chip b { display: block; overflow: hidden; color: #d7ded9; font-size: 7px; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; text-transform: uppercase; }
-.team-chip i { display: block; height: 2px; margin-top: 5px; background: rgba(255,255,255,.1); }
-.team-chip em { display: block; height: 100%; background: var(--player); }
 .team-chip small { color: var(--muted); font-size: 7px; text-align: right; }
+.heart-row { display: flex; align-items: center; gap: 3px; }
+.heart-shell { --heart-fill: 0%; width: 15px; height: 14px; display: block; flex: 0 0 auto; background: linear-gradient(90deg, #ef718e 0 var(--heart-fill), rgba(239,113,142,.14) var(--heart-fill) 100%); clip-path: polygon(50% 100%, 0 48%, 0 21%, 15% 2%, 37% 2%, 50% 22%, 63% 2%, 85% 2%, 100% 21%, 100% 48%); filter: drop-shadow(0 0 1px rgba(239,113,142,.78)); }
+.team-hearts { display: flex; gap: 2px; margin-top: 5px; }
+.team-hearts .heart-shell { width: 10px; height: 9px; }
 .team-chip.downed { border-color: var(--red); }
 .team-chip.downed small { color: var(--red); }
+.team-chip.separated { border-left-color: var(--red); }
+.team-chip.separated small { color: var(--red); font-size: 6px; }
 .team-chip.eliminated { opacity: .35; }
 .team-chip.watching { border-left-color: var(--gold); background: linear-gradient(90deg, rgba(242,212,121,.14), rgba(3,11,8,.42)); }
 .team-buffs-hud { position: absolute; left: 20px; bottom: 24px; display: flex; gap: 7px; }
@@ -194,11 +198,22 @@ body::before {
 .perks-hud { position: absolute; right: 20px; top: 66px; width: 34px; display: grid; gap: 6px; }
 .perks-hud span { position: relative; width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.13); background: rgba(4,11,9,.72); color: var(--gold); font: 15px Georgia, serif; }
 .perks-hud b { position: absolute; right: -4px; bottom: -4px; width: 13px; height: 13px; display: grid; place-items: center; border-radius: 50%; color: #08100e; background: var(--gold); font: 7px 'DM Mono', monospace; }
-.ammo-hud { position: absolute; left: 50%; bottom: 22px; width: 210px; padding: 11px 15px; transform: translateX(-50%); background: rgba(4,11,9,.76); border-bottom: 1px solid var(--gold); text-align: center; }
+.ammo-hud { position: absolute; left: 50%; bottom: 18px; width: 258px; padding: 10px 14px 11px; transform: translateX(-50%); background: linear-gradient(180deg, rgba(4,11,9,.88), rgba(4,11,9,.74)); border: 1px solid rgba(242,212,121,.12); border-bottom-color: var(--gold); box-shadow: 0 12px 30px rgba(0,0,0,.28); text-align: center; }
 .ammo-hud small { display: block; color: var(--muted); font-size: 7px; letter-spacing: .12em; }
-.ammo-hud strong { display: block; margin: 4px 0 7px; color: var(--ink); font: 500 18px 'Oswald', sans-serif; letter-spacing: .08em; }
-.ammo-hud i { display: block; height: 2px; background: rgba(255,255,255,.1); }
-.ammo-hud em { display: block; height: 100%; background: var(--gold); }
+.vitals-row { display: grid; grid-template-columns: 1fr 58px; align-items: center; gap: 10px; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,.07); text-align: left; }
+.vitals-hearts { min-width: 0; }
+.vitals-hearts > small { margin-bottom: 5px; color: #c4cec8; }
+.player-hearts { display: flex; flex-wrap: wrap; gap: 4px; min-height: 14px; }
+.player-hearts .heart-shell { width: 17px; height: 15px; }
+.regen-readout { display: grid; grid-template-columns: 31px 1fr; grid-template-rows: 1fr 1fr; align-items: center; column-gap: 6px; }
+.regen-ring { position: relative; grid-row: 1 / 3; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: conic-gradient(#74d8c2 var(--regen-progress), rgba(116,216,194,.12) 0); box-shadow: 0 0 12px rgba(116,216,194,.1); }
+.regen-ring::before { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: #07100e; }
+.regen-heart { position: relative; z-index: 1; color: #ef718e; font: 12px Georgia, serif; }
+.regen-readout b { align-self: end; color: #d8e2dc; font: 500 10px 'Oswald', sans-serif; letter-spacing: .05em; }
+.regen-readout small { align-self: start; font-size: 6px; }
+.weapon-readout > strong { display: block; margin: 3px 0 6px; color: var(--ink); font: 500 17px 'Oswald', sans-serif; letter-spacing: .08em; }
+.weapon-readout > i { display: block; height: 2px; background: rgba(255,255,255,.1); }
+.weapon-readout > i > em { display: block; height: 100%; background: var(--gold); }
 .controls-hud { position: absolute; right: 22px; bottom: 22px; display: flex; gap: 15px; color: var(--dim); font-size: 7px; }
 .controls-hud kbd { color: var(--muted); font: inherit; }
 .boss-hud { position: absolute; left: 50%; top: 86px; width: min(460px, 60vw); padding: 8px 12px; transform: translate(-50%, -10px); opacity: 0; transition: .3s; text-align: center; }
@@ -211,7 +226,7 @@ body::before {
 .timer-block strong.overtime { color: var(--red); text-shadow: 0 0 18px rgba(239,113,142,.42); }
 .event-banner { position: absolute; left: 50%; top: 138px; color: var(--gold); font: 500 15px 'Oswald', sans-serif; letter-spacing: .12em; text-align: center; transform: translate(-50%, -8px); opacity: 0; }
 .event-banner.show { animation: banner 3.3s both; }
-.spectator-hud { position: absolute; left: 50%; bottom: 106px; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid rgba(242,212,121,.28); background: rgba(3,11,8,.92); opacity: 0; transform: translate(-50%, 12px); transition: .2s; pointer-events: none; }
+.spectator-hud { position: absolute; left: 50%; bottom: 132px; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid rgba(242,212,121,.28); background: rgba(3,11,8,.92); opacity: 0; transform: translate(-50%, 12px); transition: .2s; pointer-events: none; }
 .spectator-hud.visible { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
 .spectator-hud button { width: 38px; height: 38px; border: 1px solid var(--line); background: rgba(242,212,121,.05); color: var(--gold); font: 25px Georgia, serif; cursor: pointer; }
 .spectator-hud div { min-width: 210px; display: grid; text-align: center; }
@@ -313,9 +328,12 @@ body::before {
   .weapon-card { grid-template-columns: 38px 1fr; }
   .weapon-stats { display: none; }
   .controls-hud { display: none; }
-  .team-hud { width: 150px; }
+  .team-hud { left: 10px; width: 168px; }
   .team-chip { grid-template-columns: 24px 1fr; }
   .team-chip small { display: none; }
+  .team-hearts .heart-shell { width: 9px; height: 8px; }
+  .ammo-hud { width: 236px; bottom: 10px; }
+  .player-hearts .heart-shell { width: 15px; height: 14px; }
   .hud-brand { display: none; }
   .upgrade-cards { grid-template-columns: 1fr; max-height: 60vh; overflow-y: auto; }
   .upgrade-card { min-height: 180px; }
@@ -673,6 +691,41 @@ body::before {
   .recap-scene::after { background: linear-gradient(0deg, #07100e, transparent 42%); }
   .recap-heading { padding: 12px 24px 36px; text-align: center; }
   .recap-heading .recap-sigil { margin: -34px auto 20px; background: #07100e; }
+}
+
+/* Character chronicle viewer: the normal draft keeps the painting legible, while
+   art-only mode removes every choice surface except the rotating personality note. */
+.upgrade-scene { width: min(62vw, 980px); opacity: .96; background-color: #020806; background-position: center; background-size: auto min(100vh, 627px); filter: saturate(1.02) contrast(1.02) brightness(1.05); transform: none; transition: width .28s, opacity .28s, filter .28s, transform .28s; }
+.upgrade-scene::after { background: linear-gradient(90deg, rgba(2,8,6,.96) 0, rgba(2,8,6,.5) 24%, rgba(2,8,6,.02) 68%), linear-gradient(0deg, rgba(2,8,6,.66), transparent 34%); }
+.upgrade-backdrop { background: linear-gradient(90deg, rgba(2,7,5,.96) 0%, rgba(2,7,5,.88) 43%, rgba(2,7,5,.34) 68%, rgba(2,7,5,.06) 100%); transition: opacity .25s, background .25s; }
+.upgrade-card { background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 10%, rgba(7,18,14,.76)), rgba(3,10,8,.7)); backdrop-filter: blur(6px) saturate(.9); }
+.upgrade-card.weapon { background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 14%, rgba(7,18,14,.76)), rgba(3,10,8,.7)); }
+.art-view-button { position: absolute; z-index: 5; right: 22px; top: 20px; min-width: 148px; padding: 10px 13px; border: 1px solid rgba(242,212,121,.42); color: var(--gold); background: rgba(2,8,6,.74); backdrop-filter: blur(7px); font: 7px 'DM Mono', monospace; letter-spacing: .1em; cursor: pointer; pointer-events: auto; }
+.art-view-button:hover { color: #fff3bc; border-color: var(--gold); }
+.personality-note { position: absolute; z-index: 4; right: 24px; bottom: 62px; width: min(370px, 31vw); padding: 15px 17px; border-left: 2px solid var(--gold); color: var(--ink); background: rgba(2,8,6,.76); box-shadow: 0 16px 45px rgba(0,0,0,.36); backdrop-filter: blur(8px); text-align: left; pointer-events: none; }
+.personality-note small { color: var(--gold); font-size: 7px; letter-spacing: .14em; }
+.personality-note p { margin: 8px 0 0; color: #edf0e7; font: 500 14px 'Oswald', sans-serif; line-height: 1.4; }
+.personality-note b { position: absolute; right: 10px; top: 9px; color: var(--dim); font-size: 6px; }
+.upgrade-draft { transition: opacity .2s, visibility .2s, transform .25s; }
+.upgrade-overlay.art-only .upgrade-scene { width: 100%; opacity: 1; background-position: center; background-size: auto min(100vh, 627px); filter: saturate(1.02) contrast(1.02) brightness(1.04); transform: none; }
+.upgrade-overlay.art-only .upgrade-scene::after { background: linear-gradient(0deg, rgba(2,8,6,.7), transparent 43%); }
+.upgrade-overlay.art-only .upgrade-backdrop { opacity: 0; }
+.upgrade-overlay.art-only .upgrade-draft { opacity: 0; visibility: hidden; transform: translate(-50%, -47%); pointer-events: none; }
+.upgrade-overlay.art-only .personality-note { left: 50%; right: auto; bottom: 28px; width: min(620px, calc(100% - 40px)); transform: translateX(-50%); background: rgba(2,8,6,.82); }
+.upgrade-overlay.art-only .upgrade-scene > span { right: 22px; bottom: 22px; }
+
+@media (max-width: 1120px) {
+  .personality-note { right: 18px; bottom: 24px; width: min(350px, 40vw); }
+}
+
+@media (max-width: 760px) {
+  .art-view-button { right: 12px; top: 12px; min-width: 132px; }
+  .upgrade-scene { width: 100%; opacity: .58; background-position: center; background-size: auto min(100vh, 627px); }
+  .upgrade-backdrop { background: linear-gradient(0deg, rgba(2,7,5,.94) 0%, rgba(2,7,5,.7) 72%, rgba(2,7,5,.48) 100%); }
+  .personality-note { left: 14px; right: auto; top: 58px; bottom: auto; width: calc(100% - 28px); padding: 10px 13px; }
+  .personality-note p { margin-top: 5px; font-size: 11px; }
+  .upgrade-draft { top: 56%; }
+  .upgrade-overlay.art-only .personality-note { top: auto; bottom: 18px; }
 }
 
 .random-loadout-button.active { border-color: var(--gold); color: #07100e; background: var(--gold); }

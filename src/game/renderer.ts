@@ -1,4 +1,5 @@
 import { isBoss } from './data'
+import { HEAL_CRYSTAL_SECONDS, heartFill, heartSlots } from './health'
 import { mapById, type MapDefinition } from './maps'
 import type { CompanionState, EnemyState, GameEvent, GameSnapshot, PlayerState, StructureState, StructureType } from './types'
 
@@ -22,13 +23,13 @@ const ENEMY_SPRITE_INDEX: Record<EnemyState['type'], number> = {
   tollkeeper: 8, broodmother: 9, graveknight: 10, 'eclipse-eye': 11,
 }
 const STRUCTURE_ART: Record<StructureType, { index: number; size: number; label: string; color: string }> = {
-  moonwell: { index: 0, size: 156, label: 'MOONWELL · HEALS', color: '116, 216, 194' },
+  moonwell: { index: 0, size: 156, label: 'MOONWELL · HEART CRYSTAL', color: '116, 216, 194' },
   'ward-tower': { index: 1, size: 164, label: 'WARD TOWER · FIRES', color: '116, 216, 194' },
   'ritual-stone': { index: 2, size: 158, label: 'RITUAL STONE · RAPID FIRE', color: '242, 212, 121' },
-  'sun-forge': { index: 3, size: 154, label: 'SUN FORGE · HEALS', color: '255, 121, 93' },
+  'sun-forge': { index: 3, size: 154, label: 'SUN FORGE · HEART CRYSTAL', color: '255, 121, 93' },
   'cinder-ballista': { index: 4, size: 158, label: 'CINDER BALLISTA · FIRES', color: '255, 121, 93' },
   'ember-altar': { index: 5, size: 154, label: 'EMBER ALTAR · RAPID FIRE', color: '255, 168, 76' },
-  'reliquary-font': { index: 6, size: 154, label: 'RELIQUARY FONT · HEALS', color: '137, 201, 255' },
+  'reliquary-font': { index: 6, size: 154, label: 'RELIQUARY FONT · HEART CRYSTAL', color: '137, 201, 255' },
   'ossuary-sentry': { index: 7, size: 158, label: 'OSSUARY SENTRY · FIRES', color: '201, 185, 255' },
   'echo-seal': { index: 8, size: 150, label: 'ECHO SEAL · RAPID FIRE', color: '201, 185, 255' },
 }
@@ -247,7 +248,8 @@ export class GameRenderer {
         context.arc(structure.x, structure.y, structure.radius * 1.18, 0, TAU)
         context.fill()
         this.drawAtlasSprite(this.structureAtlas, 3, 3, art.index, structure.x, structure.y, art.size, art.size, 0, true)
-        this.drawLabel(structure.x, structure.y + structure.radius + 18, art.label, `rgb(${art.color})`)
+        if (structure.effect === 'heal') this.drawHeartCrystal(structure, art.color, pulse)
+        else this.drawLabel(structure.x, structure.y + structure.radius + 18, art.label, `rgb(${art.color})`)
         continue
       }
       context.fillStyle = `rgba(${art.color}, ${0.05 + pulse * 0.04})`
@@ -258,8 +260,41 @@ export class GameRenderer {
       context.fill()
       context.stroke()
       this.drawGlyph(structure.x, structure.y + 1, structure.effect === 'heal' ? '✚' : structure.effect === 'turret' ? 'ϟ' : '✦', `rgb(${art.color})`, 19)
-      this.drawLabel(structure.x, structure.y + 48, art.label, `rgb(${art.color})`)
+      if (structure.effect === 'heal') this.drawHeartCrystal(structure, art.color, pulse)
+      else this.drawLabel(structure.x, structure.y + 48, art.label, `rgb(${art.color})`)
     }
+  }
+
+  private drawHeartCrystal(structure: StructureState, color: string, pulse: number) {
+    const context = this.context
+    const progress = structure.crystalReady ? 1 : Math.max(0, Math.min(1, (structure.crystalCharge ?? 0) / HEAL_CRYSTAL_SECONDS))
+    const ringRadius = structure.radius * 0.72
+    context.save()
+    context.lineCap = 'square'
+    context.lineWidth = 4
+    context.strokeStyle = `rgba(${color}, .18)`
+    context.beginPath()
+    context.arc(structure.x, structure.y, ringRadius, -Math.PI / 2, Math.PI * 1.5)
+    context.stroke()
+    if (progress > 0) {
+      context.strokeStyle = structure.crystalReady ? '#ef718e' : `rgb(${color})`
+      context.shadowColor = structure.crystalReady ? '#ef718e' : `rgb(${color})`
+      context.shadowBlur = structure.crystalReady ? 16 : 6
+      context.beginPath()
+      context.arc(structure.x, structure.y, ringRadius, -Math.PI / 2, -Math.PI / 2 + TAU * progress)
+      context.stroke()
+    }
+    context.shadowBlur = structure.crystalReady ? 18 : 0
+    this.drawHeartIcon(
+      structure.x,
+      structure.y - 7 - (structure.crystalReady ? pulse * 3 : 0),
+      structure.crystalReady ? 22 : 14,
+      structure.crystalReady ? 1 : progress,
+      structure.crystalReady ? '#ef718e' : `rgb(${color})`,
+    )
+    context.restore()
+    const status = structure.crystalReady ? 'READY · +1 HEART' : `${Math.ceil(HEAL_CRYSTAL_SECONDS - (structure.crystalCharge ?? 0))}s`
+    this.drawLabel(structure.x, structure.y + structure.radius + 18, `${STRUCTURE_ART[structure.type].label} · ${status}`, structure.crystalReady ? '#f3a0b3' : `rgb(${color})`)
   }
 
   private drawPickups(snapshot: GameSnapshot) {
@@ -461,10 +496,21 @@ export class GameRenderer {
         context.fill()
         context.stroke()
       }
+      if (player.isolatedFor >= 3 && !player.downed) {
+        context.save()
+        context.strokeStyle = 'rgba(239, 113, 142, .72)'
+        context.lineWidth = 1.5
+        context.setLineDash([4, 5])
+        context.beginPath()
+        context.arc(x, y, 29 + Math.sin(performance.now() / 180) * 2, 0, TAU)
+        context.stroke()
+        context.restore()
+        this.drawLabel(x, y + 38, 'SEPARATED', '#ef718e')
+      }
 
       if (this.hunterSpriteAtlas.complete && this.hunterSpriteAtlas.naturalWidth > 0) {
         const local = player.id === localPlayerId
-        const size = player.character === 'bastion' ? 84 : 78
+        const size = player.character === 'bastion' ? 58 : 54
         const motion = Math.min(1, Math.hypot(player.vx, player.vy) / 170)
         const spriteIndex = CHARACTER_SPRITE_INDEX[player.character]
         const stride = Math.sin(performance.now() / 86 + spriteIndex * 1.91)
@@ -510,9 +556,9 @@ export class GameRenderer {
         )
         context.restore()
         if (!player.downed && this.weaponSpriteAtlas.complete && this.weaponSpriteAtlas.naturalWidth > 0) {
-          const weaponSize = player.weapon === 'railgun' || player.weapon === 'seeker' ? 78
-            : player.weapon === 'sword' || player.weapon === 'scattergun' ? 74 : 70
-          const weaponOffset = player.weapon === 'sword' ? 27 : 25
+          const weaponSize = player.weapon === 'railgun' || player.weapon === 'seeker' ? 42
+            : player.weapon === 'sword' || player.weapon === 'scattergun' ? 39 : 36
+          const weaponOffset = player.weapon === 'sword' ? 17 : 15
           context.save()
           context.shadowColor = player.color
           context.shadowBlur = local ? 9 : 5
@@ -540,7 +586,7 @@ export class GameRenderer {
           context.lineTo(x - 8, y + 8)
           context.stroke()
         }
-        this.drawBar(x - 24, y - size * 0.46, 48, 4, player.health / player.maxHealth, player.downed ? '#ef718e' : player.color)
+        this.drawHearts(x, y - size * 0.56, player.health, player.maxHealth, player.downed ? '#ef718e' : player.color, 6.5)
         if (player.downed) this.drawBar(x - 24, y - size * 0.39, 48, 3, player.reviveProgress / 2.2, '#f2d479')
         this.drawLabel(x, y + size * 0.43, `${player.name}${player.awakened ? ' ✦' : ''}`, local ? '#f5f1de' : '#b8c4bd')
         continue
@@ -579,7 +625,7 @@ export class GameRenderer {
         context.stroke()
       }
       context.restore()
-      this.drawBar(x - 21, y - 27, 42, 4, player.health / player.maxHealth, player.downed ? '#ef718e' : player.color)
+      this.drawHearts(x, y - 29, player.health, player.maxHealth, player.downed ? '#ef718e' : player.color, 8)
       if (player.downed) this.drawBar(x - 21, y - 20, 42, 3, player.reviveProgress / 2.2, '#f2d479')
       this.drawLabel(x, y + 31, `${player.name}${player.awakened ? ' ✦' : ''}`, player.id === localPlayerId ? '#f5f1de' : '#b8c4bd')
     }
@@ -708,6 +754,48 @@ export class GameRenderer {
     context.fillRect(x, y, width, height)
     context.fillStyle = color
     context.fillRect(x, y, width * Math.max(0, Math.min(1, ratio)), height)
+  }
+
+  private drawHearts(x: number, y: number, health: number, maxHealth: number, color: string, size: number) {
+    const count = heartSlots(maxHealth)
+    const spacing = size + 2
+    const startX = x - ((count - 1) * spacing) / 2
+    for (let slot = 0; slot < count; slot += 1) this.drawHeartIcon(startX + slot * spacing, y, size, heartFill(health, slot), color)
+  }
+
+  private traceHeart(x: number, y: number, size: number) {
+    const context = this.context
+    const half = size / 2
+    context.beginPath()
+    context.moveTo(x, y + half)
+    context.lineTo(x - half, y)
+    context.lineTo(x - half, y - half * 0.45)
+    context.lineTo(x - half * 0.72, y - half)
+    context.lineTo(x - half * 0.24, y - half)
+    context.lineTo(x, y - half * 0.55)
+    context.lineTo(x + half * 0.24, y - half)
+    context.lineTo(x + half * 0.72, y - half)
+    context.lineTo(x + half, y - half * 0.45)
+    context.lineTo(x + half, y)
+    context.closePath()
+  }
+
+  private drawHeartIcon(x: number, y: number, size: number, fill: number, color: string) {
+    const context = this.context
+    const ratio = Math.max(0, Math.min(1, fill))
+    this.traceHeart(x, y, size)
+    context.fillStyle = 'rgba(2, 7, 6, .86)'
+    context.fill()
+    context.save()
+    this.traceHeart(x, y, size)
+    context.clip()
+    context.fillStyle = color
+    context.fillRect(x - size / 2, y - size / 2, size * ratio, size)
+    context.restore()
+    this.traceHeart(x, y, size)
+    context.strokeStyle = ratio > 0 ? color : 'rgba(239, 113, 142, .42)'
+    context.lineWidth = Math.max(1, size / 9)
+    context.stroke()
   }
 
   private drawGlyph(x: number, y: number, glyph: string, color: string, size: number) {

@@ -1,7 +1,9 @@
 import './style.css'
 import { BOSS_NAMES, CHARACTERS, PLAYER_COLORS, UPGRADES, WEAPONS, characterById, isBoss, teamBuffById, upgradeById, weaponById } from './game/data'
 import { GameEngine } from './game/engine'
+import { HEART_REGEN_SECONDS, HEART_VALUE, heartFill, heartSlots } from './game/health'
 import { MAPS, mapById } from './game/maps'
+import { personalityFact } from './game/personality'
 import { GameRenderer } from './game/renderer'
 import type { BossType, GameSnapshot, InputState, MapChoice, MapId, PlayerConfig } from './game/types'
 import { MultiplayerSession } from './network'
@@ -43,14 +45,15 @@ const atlasStyle = (file: string, columns: number, rows: number, index: number) 
 }
 const portraitStyle = (character: PlayerConfig['character']) => atlasStyle('hunter-portraits-v3.webp', 4, 2, CHARACTER_ART_INDEX[character])
 const mapArtStyle = (mapId: MapId) => atlasStyle('biome-textures-v1.webp', 2, 2, mapById(mapId).textureIndex)
-const stableArtVariant = (key: string): number => {
+const stableHash = (key: string): number => {
   let hash = 2166136261
   for (let index = 0; index < key.length; index += 1) {
     hash ^= key.charCodeAt(index)
     hash = Math.imul(hash, 16777619)
   }
-  return (Math.abs(hash) % 5) + 1
+  return Math.abs(hash)
 }
+const stableArtVariant = (key: string): number => (stableHash(key) % 5) + 1
 const upgradeSceneStyle = (character: PlayerConfig['character'], variant: number) => `background-image:url('${ART_BASE}upgrade-${character}-${variant}.webp');`
 const recapSceneStyle = (won: boolean, variant: number) => `background-image:url('${ART_BASE}recap-${won ? 'victory' : 'defeat'}-${variant}.webp');`
 const weaponArtStyle = (weapon: PlayerConfig['weapon']) => {
@@ -65,6 +68,12 @@ const perkIconMarkup = (perkId: string, className: string, tag: 'span' | 'i' = '
   const painted = paintedPerk || companionIndex !== undefined
   const paintedStyle = companionIndex !== undefined ? atlasStyle('companion-sprites-v1.webp', 4, 2, companionIndex) : perkArtStyle(perkId)
   return `<${tag} class="${className}${painted ? '' : ' glyph-icon'}" style="${painted ? paintedStyle : `--accent:${upgrade.accent}`}" aria-hidden="true">${painted ? '' : upgrade.icon}${badge ? `<b>${badge}</b>` : ''}</${tag}>`
+}
+const heartsMarkup = (health: number, maxHealth: number, className = 'heart-row') => {
+  const slots = heartSlots(maxHealth)
+  const current = Math.max(0, health / HEART_VALUE)
+  const readable = Number.isInteger(current) ? current.toFixed(0) : current.toFixed(1)
+  return `<span class="${className}" role="img" aria-label="${readable} of ${slots} hearts">${Array.from({ length: slots }, (_, slot) => `<i class="heart-shell" style="--heart-fill:${heartFill(health, slot) * 100}%"></i>`).join('')}</span>`
 }
 
 document.documentElement.style.setProperty('--hero-art', `url('${ART_BASE}hero-night.webp')`)
@@ -128,6 +137,7 @@ class DawnfallApp {
   private lastHandledEvent = 0
   private finishQueued = false
   private spectatingId?: string
+  private upgradeArtOnly = false
   private readonly inputs = new Map<string, InputState>()
   private readonly localInput: InputState = { up: false, down: false, left: false, right: false, firing: false, interact: false, aim: 0 }
   private readonly audio = new AudioPulse()
@@ -211,7 +221,7 @@ class DawnfallApp {
         <p class="eyebrow">DESIGN DNA</p>
         <h2>What came from the research</h2>
         <p><em>20 Minutes Till Dawn</em> stands apart from passive survivor-likes through directional aiming, active firing, magazines, reloads, character–weapon pairing, upgrade trees, and boss-granted power spikes.</p>
-        <p>Dawnfall keeps that active tension while giving the squad one shared XP track. Rarer levels pause the night for simultaneous personal drafts: three one-of-one choices and three rerolls for every active hunter. Character companions and signature powers create distinct personal builds; boss relics remain the rare squad-wide power spike. Three original battlefields now change the structures, terrain, sightlines, and navigation—including a solid-walled nine-room dungeon.</p>
+        <p>Dawnfall keeps that active tension while giving the squad one shared XP track. Rarer levels pause the night for simultaneous personal drafts: three one-of-one choices and three rerolls for every active hunter. Character companions and signature powers create distinct personal builds; boss relics remain the rare squad-wide power spike. Three original battlefields change the structures, terrain, sightlines, and navigation—including a solid-walled nine-room dungeon. Hunters carry readable heart-based vitality, recover one heart each minute, and can contest timed heart crystals at healing structures.</p>
         <div class="dialog-rule"></div>
         <p class="small-copy">This prototype uses original names, code, balancing, visual language, characters, enemies, abilities, and hand-directed generated artwork.</p>
       </dialog>
@@ -559,10 +569,10 @@ class DawnfallApp {
 
     const team = document.querySelector('#team-hud')
     if (team) team.innerHTML = snapshot.players.map((player) => `
-      <article class="team-chip ${player.downed ? 'downed' : ''} ${player.eliminated ? 'eliminated' : ''} ${player.id === focusId && localPlayer?.eliminated ? 'watching' : ''}">
+      <article class="team-chip ${player.downed ? 'downed' : ''} ${player.eliminated ? 'eliminated' : ''} ${player.isolatedFor >= 3 ? 'separated' : ''} ${player.id === focusId && localPlayer?.eliminated ? 'watching' : ''}">
         <span class="team-portrait" style="--player:${player.color};${portraitStyle(player.character)}"></span>
-        <div><b>${escapeHtml(player.name)} · L${player.level}</b><i><em style="width:${(player.health / player.maxHealth) * 100}%"></em></i></div>
-        <small>${player.eliminated ? 'LOST' : player.downed ? `${Math.ceil(player.downTimer)}s` : player.id === focusId && localPlayer?.eliminated ? 'VIEW' : `${Math.ceil(player.health)}`}</small>
+        <div><b>${escapeHtml(player.name)} · L${player.level}</b>${heartsMarkup(player.health, player.maxHealth, 'team-hearts')}</div>
+        <small>${player.eliminated ? 'LOST' : player.downed ? `${Math.ceil(player.downTimer)}s` : player.isolatedFor >= 3 ? 'SEPARATED' : player.id === focusId && localPlayer?.eliminated ? 'VIEW' : `♥ ${Math.max(1, Math.ceil(HEART_REGEN_SECONDS - player.heartRegen))}s`}</small>
       </article>`).join('')
 
     const perks = document.querySelector('#perks-hud')
@@ -574,7 +584,14 @@ class DawnfallApp {
       const weapon = weaponById(hudPlayer.weapon)
       const reloading = hudPlayer.reloadRemaining > 0
       const reloadProgress = reloading ? 1 - hudPlayer.reloadRemaining / hudPlayer.reloadDuration : 1
-      ammo.innerHTML = `<small>${localPlayer?.eliminated ? `${escapeHtml(hudPlayer.name.toUpperCase())} · ` : ''}${weapon.name.toUpperCase()}</small><strong>${weapon.infiniteAmmo ? '∞' : reloading ? 'RELOAD' : `${hudPlayer.ammo} / ${hudPlayer.maxAmmo}`}</strong><i><em style="width:${reloadProgress * 100}%"></em></i>`
+      const regenProgress = Math.max(0, Math.min(1, hudPlayer.heartRegen / HEART_REGEN_SECONDS))
+      const regenSeconds = Math.max(1, Math.ceil(HEART_REGEN_SECONDS - hudPlayer.heartRegen))
+      ammo.innerHTML = `
+        <div class="vitals-row" data-testid="player-hearts">
+          <div class="vitals-hearts"><small>${localPlayer?.eliminated ? escapeHtml(hudPlayer.name.toUpperCase()) : 'VITALS'}</small>${heartsMarkup(hudPlayer.health, hudPlayer.maxHealth, 'player-hearts')}</div>
+          <div class="regen-readout" title="One heart regenerates every minute"><span class="regen-ring" style="--regen-progress:${regenProgress * 360}deg"><i class="regen-heart">♥</i></span><b>${regenSeconds}s</b><small>REGEN</small></div>
+        </div>
+        <div class="weapon-readout"><small>${weapon.name.toUpperCase()}</small><strong>${weapon.infiniteAmmo ? '∞' : reloading ? 'RELOAD' : `${hudPlayer.ammo} / ${hudPlayer.maxAmmo}`}</strong><i><em style="width:${reloadProgress * 100}%"></em></i></div>`
     }
 
     const finaleBosses = snapshot.enemies.filter((enemy) => enemy.finale && enemy.health > 0)
@@ -610,6 +627,8 @@ class DawnfallApp {
     if (!offer || snapshot.phase !== 'upgrade') {
       overlay.innerHTML = ''
       overlay.classList.remove('visible')
+      overlay.classList.remove('art-only')
+      this.upgradeArtOnly = false
       delete overlay.dataset.offer
       return
     }
@@ -620,6 +639,7 @@ class DawnfallApp {
     const sceneCharacter = localPlayer?.character ?? snapshot.players[0]?.character ?? 'vesper'
     const sceneVariant = stableArtVariant(`${snapshot.seed}:${offer.level}:${this.localConfig.id}`)
     const sceneHunter = characterById(sceneCharacter)
+    const personality = personalityFact(sceneCharacter, stableHash(`${snapshot.seed}:${offer.level}:${sceneCharacter}:personality`))
     const offerKey = `${offer.level}-${draftLocked ? 'locked' : 'ready'}-${offer.offers.map((entry) => `${entry.chooserId}:${entry.ids.join('.')}:${entry.rerollsLeft}:${entry.selectedId ?? ''}`).join('|')}`
     if (overlay.dataset.offer === offerKey) {
       const countdown = overlay.querySelector('[data-countdown]')
@@ -630,9 +650,12 @@ class DawnfallApp {
     }
     overlay.dataset.offer = offerKey
     overlay.classList.add('visible')
+    overlay.classList.toggle('art-only', this.upgradeArtOnly)
     overlay.innerHTML = `
       <div class="upgrade-scene" data-art-variant="${sceneVariant}" role="img" aria-label="${sceneHunter.name} in a playful alternate setting" style="${upgradeSceneStyle(sceneCharacter, sceneVariant)}"><span>${sceneHunter.name.toUpperCase()} · A LIFE BEYOND THE NIGHT</span></div>
       <div class="upgrade-backdrop"></div>
+      <button class="art-view-button" data-art-view aria-pressed="${this.upgradeArtOnly}">${this.upgradeArtOnly ? '↩ RETURN TO CHOICES' : '⛶ VIEW FULL ART'}</button>
+      <aside class="personality-note"><small>GETTING TO KNOW ${sceneHunter.name.toUpperCase()}</small><p>${escapeHtml(personality)}</p><b>${(stableHash(`${snapshot.seed}:${offer.level}:${sceneCharacter}:personality`) % 50) + 1} / 50</b></aside>
       <section class="upgrade-draft">
         <p class="eyebrow">SQUAD LEVEL ${offer.level + 1} · PARALLEL DRAFT</p>
         <h2>${localChooses ? 'SHAPE YOUR HUNTER' : localOffer?.selectedId ? 'YOUR UPGRADE IS LOCKED' : 'THE SQUAD IS CHOOSING'}</h2>
@@ -666,6 +689,13 @@ class DawnfallApp {
     overlay.querySelector<HTMLElement>('[data-reroll]')?.addEventListener('click', () => {
       if (this.mode === 'guest') this.network.sendReroll(this.localConfig.id)
       else this.engine?.rerollUpgrade(this.localConfig.id)
+    })
+    const artViewButton = overlay.querySelector<HTMLButtonElement>('[data-art-view]')
+    artViewButton?.addEventListener('click', () => {
+      this.upgradeArtOnly = !this.upgradeArtOnly
+      overlay.classList.toggle('art-only', this.upgradeArtOnly)
+      artViewButton.setAttribute('aria-pressed', this.upgradeArtOnly.toString())
+      artViewButton.textContent = this.upgradeArtOnly ? '↩ RETURN TO CHOICES' : '⛶ VIEW FULL ART'
     })
   }
 

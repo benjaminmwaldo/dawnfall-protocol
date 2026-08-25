@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { CHARACTERS, UPGRADES, WEAPONS } from '../src/game/data'
 import { GameEngine } from '../src/game/engine'
+import { HALF_HEART_VALUE, HEAL_CRYSTAL_SECONDS, HEART_REGEN_SECONDS, HEART_VALUE } from '../src/game/health'
 import { MAPS, mapById } from '../src/game/maps'
+import { PERSONALITY_FACTS } from '../src/game/personality'
 import { uprightSpriteTransform } from '../src/game/renderer'
 import type { InputState, PlayerConfig } from '../src/game/types'
 
@@ -199,6 +201,19 @@ describe('GameEngine', () => {
     expect(engine.snapshot.upgrade?.offers[0].ids.some((id) => signatureIds.has(id))).toBe(true)
   })
 
+  it('never offers ally-dependent upgrades to a solo hunter', () => {
+    const engine = new GameEngine([{ ...player, character: 'warden' }], 240, 103)
+    const forbidden = new Set(['sanctuary', 'merciful-hand', 'last-rite'])
+    for (let level = 0; level < 3; level += 1) {
+      engine.snapshot.players[0].xp = engine.snapshot.players[0].xpToNext
+      engine.step(0.05, new Map([[player.id, idle]]))
+      expect(engine.snapshot.upgrade?.offers[0].ids.some((id) => forbidden.has(id))).toBe(false)
+      const offered = engine.snapshot.upgrade!.offers[0].ids[0]
+      clearDraftInputDelay(engine, new Map([[player.id, idle]]))
+      engine.chooseUpgrade(offered, player.id)
+    }
+  })
+
   it('drafts one character perk, one current-weapon perk, and one common power', () => {
     const engine = new GameEngine([{ ...player, character: 'tempest', weapon: 'arc-rifle' }], 240, 102)
     engine.snapshot.players[0].xp = engine.snapshot.players[0].xpToNext
@@ -272,16 +287,142 @@ describe('GameEngine', () => {
     }
 
     dealHit()
-    expect(target.health).toBe(90)
+    expect(target.health).toBe(112.5)
     expect(target.invulnerable).toBeCloseTo(0.42)
     dealHit()
-    expect(target.health).toBe(90)
+    expect(target.health).toBe(112.5)
 
     target.invulnerable = 0
     target.perks['kinetic-shell'] = 1
     dealHit()
-    expect(target.health).toBe(80)
+    expect(target.health).toBe(100)
     expect(target.invulnerable).toBeCloseTo(0.7)
+  })
+
+  it('starts every hunter with five hearts plus Bastion’s sixth-heart identity', () => {
+    for (const character of CHARACTERS) {
+      const engine = new GameEngine([{ ...player, character: character.id }], 240, 320)
+      const hunter = engine.snapshot.players[0]
+      expect(hunter.maxHealth / HEART_VALUE).toBe(character.id === 'bastion' ? 6 : 5)
+      expect(hunter.health).toBe(hunter.maxHealth)
+    }
+  })
+
+  it('turns maximum-health powers into whole-heart upgrades', () => {
+    const engine = new GameEngine([player], 240, 321)
+    const hunter = engine.snapshot.players[0]
+    hunter.health -= HEART_VALUE
+    engine.snapshot.phase = 'upgrade'
+    engine.snapshot.upgrade = { level: 1, expiresIn: 20, acceptsInputIn: 0, offers: [{ chooserId: player.id, ids: ['vitality'], rerollsLeft: 3 }] }
+    expect(engine.chooseUpgrade('vitality', player.id)).toBe(true)
+    expect(hunter.maxHealth).toBe(HEART_VALUE * 6)
+    expect(hunter.health).toBe(HEART_VALUE * 5)
+  })
+
+  it('regenerates one personal heart every minute', () => {
+    const engine = new GameEngine([player], 240, 322)
+    const hunter = engine.snapshot.players[0]
+    hunter.health -= HEART_VALUE
+    hunter.heartRegen = HEART_REGEN_SECONDS - 0.02
+    engine.step(0.05, new Map([[player.id, idle]]))
+    expect(hunter.health).toBe(hunter.maxHealth)
+    expect(hunter.heartRegen).toBeLessThan(0.1)
+  })
+
+  it('charges a one-heart crystal for a minute and only spends it on a wounded hunter', () => {
+    const engine = new GameEngine([player], 240, 323)
+    const hunter = engine.snapshot.players[0]
+    const station = engine.snapshot.structures.find((structure) => structure.effect === 'heal')!
+    hunter.x = station.x
+    hunter.y = station.y
+    hunter.health -= HEART_VALUE
+    station.crystalCharge = HEAL_CRYSTAL_SECONDS / 2
+    engine.step(0.05, new Map([[player.id, idle]]))
+    expect(hunter.health).toBe(hunter.maxHealth - HEART_VALUE)
+    expect(station.crystalReady).toBe(false)
+
+    station.crystalCharge = HEAL_CRYSTAL_SECONDS - 0.02
+    engine.step(0.05, new Map([[player.id, idle]]))
+    expect(hunter.health).toBe(hunter.maxHealth)
+    expect(station.crystalReady).toBe(false)
+    expect(station.crystalCharge).toBe(0)
+  })
+
+  it('keeps all hostile damage in readable half-heart units', () => {
+    const engine = new GameEngine([player], 240, 324)
+    engine.snapshot.enemies.push({
+      id: 90_324, type: 'spitter', x: 200, y: 0, vx: 0, vy: 0, health: 100, maxHealth: 100,
+      radius: 15, speed: 0, damage: HALF_HEART_VALUE, attackCooldown: 0, burn: 0, burnTick: 0.5, slow: 0, phase: 0,
+    })
+    engine.step(0.05, new Map([[player.id, idle]]))
+    const hostile = engine.snapshot.projectiles.find((projectile) => projectile.enemy)!
+    expect(hostile.damage).toBe(HALF_HEART_VALUE)
+    expect(hostile.damage % HALF_HEART_VALUE).toBe(0)
+  })
+
+  it('makes multiplayer denser and punishes hunters who abandon formation', () => {
+    const ally = { ...player, id: 'ally', name: 'Ally', character: 'warden' as const }
+    const solo = new GameEngine([player], 240, 325)
+    const duo = new GameEngine([player, ally], 240, 325)
+    const soloInputs = new Map([[player.id, idle]])
+    const duoInputs = new Map([[player.id, idle], [ally.id, idle]])
+    for (let tick = 0; tick < 50; tick += 1) {
+      solo.step(0.05, soloInputs)
+      duo.step(0.05, duoInputs)
+    }
+    expect(duo.snapshot.enemies.length).toBeGreaterThan(solo.snapshot.enemies.length)
+
+    const isolated = duo.snapshot.players[0]
+    const teammate = duo.snapshot.players[1]
+    isolated.x = -500
+    teammate.x = 500
+    isolated.isolatedFor = 3
+    const before = isolated.health
+    duo.snapshot.projectiles.push({
+      id: 90_325, ownerId: 'enemy-test', x: isolated.x, y: isolated.y, vx: 0, vy: 0,
+      radius: 8, damage: HALF_HEART_VALUE, life: 1, pierce: 0, bounces: 0, enemy: true,
+      chain: 0, burn: false, color: '#ef718e',
+    })
+    duo.step(0, duoInputs)
+    expect(before - isolated.health).toBe(HEART_VALUE)
+  })
+
+  it('skips unwinnable solo bleedout but grants multiplayer a long rescue window', () => {
+    const solo = new GameEngine([player], 240, 326)
+    const soloHunter = solo.snapshot.players[0]
+    soloHunter.health = HALF_HEART_VALUE
+    solo.snapshot.projectiles.push({
+      id: 90_326, ownerId: 'enemy-test', x: soloHunter.x, y: soloHunter.y, vx: 0, vy: 0,
+      radius: 8, damage: HALF_HEART_VALUE, life: 1, pierce: 0, bounces: 0, enemy: true,
+      chain: 0, burn: false, color: '#ef718e',
+    })
+    solo.step(0, new Map([[player.id, idle]]))
+    expect(soloHunter.eliminated).toBe(true)
+    expect(soloHunter.downed).toBe(false)
+    expect(solo.snapshot.phase).toBe('defeat')
+
+    const ally = { ...player, id: 'ally', name: 'Ally', character: 'warden' as const }
+    const duo = new GameEngine([player, ally], 240, 327)
+    const downed = duo.snapshot.players[0]
+    duo.snapshot.players[1].x = 500
+    downed.health = HALF_HEART_VALUE
+    duo.snapshot.projectiles.push({
+      id: 90_327, ownerId: 'enemy-test', x: downed.x, y: downed.y, vx: 0, vy: 0,
+      radius: 8, damage: HALF_HEART_VALUE, life: 1, pierce: 0, bounces: 0, enemy: true,
+      chain: 0, burn: false, color: '#ef718e',
+    })
+    duo.step(0, new Map([[player.id, idle], [ally.id, idle]]))
+    expect(downed.downed).toBe(true)
+    expect(downed.eliminated).toBe(false)
+    expect(downed.downTimer).toBe(24)
+  })
+
+  it('ships fifty rotating personality details for every hunter', () => {
+    for (const character of CHARACTERS) {
+      expect(PERSONALITY_FACTS[character.id]).toHaveLength(50)
+      expect(new Set(PERSONALITY_FACTS[character.id]).size).toBe(50)
+    }
+    expect(PERSONALITY_FACTS.cinder.filter((fact) => /climate|human-rights|protest|march|mutual-aid|vote|justice|community|refugee/i.test(fact)).length).toBeGreaterThanOrEqual(15)
   })
 
   it('spawns every ambient enemy beyond every living player viewport', () => {
