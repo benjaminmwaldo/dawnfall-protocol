@@ -39,9 +39,9 @@ export const CHARACTERS: CharacterDefinition[] = [
 ]
 
 export const WEAPONS: WeaponDefinition[] = [
-  { id: 'revolver', name: 'Oathkeeper', glyph: '⌁', description: 'Six precise shots. High damage and clean criticals.', damage: 30, fireRate: 3.1, projectiles: 1, magazine: 6, reload: 1.05, speed: 760, spread: 0.025, pierce: 0, chain: 0 },
-  { id: 'scattergun', name: 'Gravesong', glyph: '≋', description: 'A short-range fan that erases crowded lanes.', damage: 12, fireRate: 1.25, projectiles: 5, magazine: 4, reload: 1.3, speed: 620, spread: 0.5, pierce: 0, chain: 0 },
-  { id: 'arc-rifle', name: 'Blue Ruin', glyph: 'ϟ', description: 'Fast rounds that arc into a second target.', damage: 15, fireRate: 5.4, projectiles: 1, magazine: 16, reload: 1.55, speed: 700, spread: 0.045, pierce: 0, chain: 1 },
+  { id: 'revolver', name: 'Oathkeeper', glyph: '⌁', description: 'Six precise shots. High damage and clean criticals.', damage: 30, fireRate: 3.1, projectiles: 1, magazine: 6, reload: 1.05, speed: 650, spread: 0.025, pierce: 0, chain: 0 },
+  { id: 'scattergun', name: 'Gravesong', glyph: '≋', description: 'A short-range fan that erases crowded lanes.', damage: 12, fireRate: 1.25, projectiles: 5, magazine: 4, reload: 1.3, speed: 530, spread: 0.5, pierce: 0, chain: 0 },
+  { id: 'arc-rifle', name: 'Blue Ruin', glyph: 'ϟ', description: 'Fast rounds that arc into a second target.', damage: 15, fireRate: 5.4, projectiles: 1, magazine: 16, reload: 1.55, speed: 600, spread: 0.045, pierce: 0, chain: 1 },
 ]
 
 const common = (definition: Omit<UpgradeDefinition, 'category' | 'character'>): UpgradeDefinition => ({ ...definition, category: 'common' })

@@ -8,6 +8,9 @@ const player: PlayerConfig = {
   id: 'test-player', name: 'Tester', character: 'vesper', weapon: 'revolver', color: '#f2d479',
 }
 const idle: InputState = { up: false, down: false, left: false, right: false, firing: false, interact: false, aim: 0 }
+const clearDraftInputDelay = (engine: GameEngine, inputs: ReadonlyMap<string, InputState>) => {
+  for (let tick = 0; tick < 11; tick += 1) engine.step(0.05, inputs)
+}
 
 describe('GameEngine', () => {
   it('keeps every rare upgrade one-of-one with five signatures per hunter', () => {
@@ -36,6 +39,8 @@ describe('GameEngine', () => {
     engine.step(1 / 60, new Map([[player.id, firing]]))
     expect(engine.snapshot.players[0].ammo).toBe(5)
     expect(engine.snapshot.projectiles.length).toBe(1)
+    expect(Math.hypot(engine.snapshot.projectiles[0].vx, engine.snapshot.projectiles[0].vy)).toBeLessThan(700)
+    expect(engine.snapshot.projectiles[0].radius).toBeGreaterThan(4)
     for (let shot = 0; shot < 400; shot += 1) engine.step(1 / 60, new Map([[player.id, firing]]))
     expect(engine.snapshot.players[0].ammo).toBeLessThanOrEqual(engine.snapshot.players[0].maxAmmo)
   })
@@ -51,6 +56,8 @@ describe('GameEngine', () => {
     expect(draft?.offers.every((offer) => offer.ids.length === 3)).toBe(true)
     const playerOffer = draft!.offers.find((offer) => offer.chooserId === player.id)!
     const allyOffer = draft!.offers.find((offer) => offer.chooserId === ally.id)!
+    expect(engine.chooseUpgrade(playerOffer.ids[0], player.id)).toBe(false)
+    clearDraftInputDelay(engine, new Map([[player.id, idle], [ally.id, idle]]))
     expect(engine.chooseUpgrade(playerOffer.ids[0], player.id)).toBe(true)
     expect(engine.snapshot.phase).toBe('upgrade')
     expect(engine.snapshot.players.every((squadmate) => squadmate.level === 1)).toBe(true)
@@ -112,6 +119,8 @@ describe('GameEngine', () => {
     const playerOffer = engine.snapshot.upgrade!.offers.find((offer) => offer.chooserId === player.id)!
     const allyOffer = engine.snapshot.upgrade!.offers.find((offer) => offer.chooserId === ally.id)!
     const allyChoices = [...allyOffer.ids]
+    expect(engine.rerollUpgrade(player.id)).toBe(false)
+    clearDraftInputDelay(engine, new Map([[player.id, idle], [ally.id, idle]]))
     for (let reroll = 2; reroll >= 0; reroll -= 1) {
       const previousChoices = [...playerOffer.ids]
       expect(engine.rerollUpgrade(player.id)).toBe(true)
@@ -126,7 +135,7 @@ describe('GameEngine', () => {
   it('turns a companion upgrade into an attacking persistent pet', () => {
     const engine = new GameEngine([player], 240, 303)
     engine.snapshot.phase = 'upgrade'
-    engine.snapshot.upgrade = { level: 1, expiresIn: 20, offers: [{ chooserId: player.id, ids: ['gravewing', 'quick-hands', 'fleetfoot'], rerollsLeft: 3 }] }
+    engine.snapshot.upgrade = { level: 1, expiresIn: 20, acceptsInputIn: 0, offers: [{ chooserId: player.id, ids: ['gravewing', 'quick-hands', 'fleetfoot'], rerollsLeft: 3 }] }
     expect(engine.chooseUpgrade('gravewing', player.id)).toBe(true)
     expect(engine.snapshot.companions).toHaveLength(1)
     expect(engine.snapshot.companions[0]).toMatchObject({ ownerId: player.id, kind: 'gravewing' })
@@ -147,7 +156,54 @@ describe('GameEngine', () => {
     engine.step(1 / 60, new Map([[player.id, idle]]))
     const hostile = engine.snapshot.projectiles.find((projectile) => projectile.enemy)
     expect(hostile).toBeDefined()
-    expect(Math.hypot(hostile!.vx, hostile!.vy)).toBeLessThanOrEqual(185)
+    expect(Math.hypot(hostile!.vx, hostile!.vy)).toBeLessThanOrEqual(155)
+    expect(hostile!.radius).toBeGreaterThan(6)
+  })
+
+  it('spawns every ambient enemy beyond every living player viewport', () => {
+    const ally = { ...player, id: 'ally', name: 'Ally', character: 'warden' as const }
+    const engine = new GameEngine([player, ally], 240, 414)
+    engine.snapshot.players[0].x = -420
+    engine.snapshot.players[0].y = 180
+    engine.snapshot.players[1].x = 510
+    engine.snapshot.players[1].y = -160
+    const viewports = new Map<string, InputState>([
+      [player.id, { ...idle, viewportWidth: 1600, viewportHeight: 900 }],
+      [ally.id, { ...idle, viewportWidth: 1280, viewportHeight: 720 }],
+    ])
+    for (let tick = 0; tick < 6; tick += 1) engine.step(0.05, viewports)
+    expect(engine.snapshot.enemies.length).toBeGreaterThan(0)
+    for (const enemy of engine.snapshot.enemies) {
+      for (const hunter of engine.snapshot.players) {
+        const viewport = viewports.get(hunter.id)!
+        const beyondHorizontalEdge = Math.abs(enemy.x - hunter.x) > viewport.viewportWidth! / 2
+        const beyondVerticalEdge = Math.abs(enemy.y - hunter.y) > viewport.viewportHeight! / 2
+        expect(beyondHorizontalEdge || beyondVerticalEdge).toBe(true)
+      }
+    }
+  })
+
+  it('gives each boss a distinct dash, barrage, and reinforcement pattern', () => {
+    const patterns = [
+      { type: 'tollkeeper' as const, hostileShots: 15, adds: 3 },
+      { type: 'broodmother' as const, hostileShots: 10, adds: 7 },
+      { type: 'graveknight' as const, hostileShots: 12, adds: 3 },
+      { type: 'eclipse-eye' as const, hostileShots: 21, adds: 4 },
+    ]
+    for (const pattern of patterns) {
+      const engine = new GameEngine([player], 240, 500 + pattern.hostileShots)
+      engine.snapshot.enemies.push({
+        id: 90_000, type: pattern.type, x: 300, y: 0, vx: 0, vy: 0, health: 5_000, maxHealth: 5_000,
+        radius: 60, speed: 40, damage: 20, attackCooldown: 0, abilityCooldown: 0, summonCooldown: 0,
+        contactCooldown: 0, dashRemaining: 0, dashAngle: 0, strafeDirection: 1,
+        burn: 0, burnTick: 0.5, slow: 0, phase: 0,
+      })
+      engine.step(0.05, new Map([[player.id, { ...idle, viewportWidth: 1280, viewportHeight: 720 }]]))
+      const boss = engine.snapshot.enemies.find((enemy) => enemy.type === pattern.type)!
+      expect(boss.dashRemaining).toBeGreaterThan(0)
+      expect(engine.snapshot.projectiles.filter((projectile) => projectile.enemy)).toHaveLength(pattern.hostileShots)
+      expect(engine.snapshot.enemies.filter((enemy) => enemy.id !== boss.id)).toHaveLength(pattern.adds)
+    }
   })
 
   it('schedules four distinct bosses and turns each kill into a squad relic', () => {

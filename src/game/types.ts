@@ -24,6 +24,8 @@ export interface InputState {
   firing: boolean
   interact: boolean
   aim: number
+  viewportWidth?: number
+  viewportHeight?: number
 }
 
 export interface PlayerState extends PlayerConfig {
@@ -74,6 +76,12 @@ export interface EnemyState {
   burnOwner?: string
   slow: number
   phase: number
+  abilityCooldown?: number
+  summonCooldown?: number
+  contactCooldown?: number
+  dashRemaining?: number
+  dashAngle?: number
+  strafeDirection?: number
 }
 
 export interface ProjectileState {
@@ -134,6 +142,7 @@ export interface GameEvent {
 export interface UpgradeOffer {
   level: number
   expiresIn: number
+  acceptsInputIn: number
   offers: PlayerUpgradeOffer[]
 }
 

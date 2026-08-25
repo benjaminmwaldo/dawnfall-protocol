@@ -104,6 +104,10 @@ export class GameRenderer {
     return Math.atan2(clientY - bounds.top - bounds.height / 2, clientX - bounds.left - bounds.width / 2)
   }
 
+  viewportSize(): { width: number; height: number } {
+    return { width: this.width, height: this.height }
+  }
+
   private drawGround() {
     const context = this.context
     context.fillStyle = '#07100e'
@@ -252,7 +256,7 @@ export class GameRenderer {
       const x = projectile.x + projectile.vx * predictionSeconds
       const y = projectile.y + projectile.vy * predictionSeconds
       context.strokeStyle = projectile.color
-      context.lineWidth = projectile.radius * 1.5
+      context.lineWidth = projectile.radius * 1.7
       context.globalAlpha = projectile.enemy ? 0.8 : 0.95
       context.shadowColor = projectile.color
       context.shadowBlur = projectile.enemy ? 9 : 13

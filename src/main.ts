@@ -409,6 +409,11 @@ class DawnfallApp {
     if (this.screen !== 'game') return
     const dt = Math.min(0.05, (time - this.lastFrame) / 1000)
     this.lastFrame = time
+    const viewport = this.renderer?.viewportSize()
+    if (viewport) {
+      this.localInput.viewportWidth = Math.round(viewport.width)
+      this.localInput.viewportHeight = Math.round(viewport.height)
+    }
     this.inputs.set(this.localConfig.id, { ...this.localInput })
 
     if (this.mode !== 'guest' && this.engine) {
@@ -449,6 +454,7 @@ class DawnfallApp {
     if (!previous) return true
     if (next.up !== previous.up || next.down !== previous.down || next.left !== previous.left || next.right !== previous.right
       || next.firing !== previous.firing || next.interact !== previous.interact) return true
+    if (next.viewportWidth !== previous.viewportWidth || next.viewportHeight !== previous.viewportHeight) return true
     const aimDifference = Math.abs(Math.atan2(Math.sin(next.aim - previous.aim), Math.cos(next.aim - previous.aim)))
     return aimDifference > 0.015
   }
@@ -535,10 +541,13 @@ class DawnfallApp {
     const localPlayer = snapshot.players.find((player) => player.id === this.localConfig.id)
     const localOffer = offer.offers.find((entry) => entry.chooserId === this.localConfig.id)
     const localChooses = Boolean(localOffer && !localOffer.selectedId)
-    const offerKey = `${offer.level}-${offer.offers.map((entry) => `${entry.chooserId}:${entry.ids.join('.')}:${entry.rerollsLeft}:${entry.selectedId ?? ''}`).join('|')}`
+    const draftLocked = offer.acceptsInputIn > 0
+    const offerKey = `${offer.level}-${draftLocked ? 'locked' : 'ready'}-${offer.offers.map((entry) => `${entry.chooserId}:${entry.ids.join('.')}:${entry.rerollsLeft}:${entry.selectedId ?? ''}`).join('|')}`
     if (overlay.dataset.offer === offerKey) {
       const countdown = overlay.querySelector('[data-countdown]')
       if (countdown) countdown.textContent = Math.ceil(offer.expiresIn).toString()
+      const inputDelay = overlay.querySelector('[data-input-delay]')
+      if (inputDelay) inputDelay.textContent = Math.max(0, offer.acceptsInputIn).toFixed(1)
       return
     }
     overlay.dataset.offer = offerKey
@@ -549,6 +558,7 @@ class DawnfallApp {
         <p class="eyebrow">SQUAD LEVEL ${offer.level + 1} · PARALLEL DRAFT</p>
         <h2>${localChooses ? 'SHAPE YOUR HUNTER' : localOffer?.selectedId ? 'YOUR UPGRADE IS LOCKED' : 'THE SQUAD IS CHOOSING'}</h2>
         <p>Every active hunter gets three transformative choices and three personal rerolls. Combat resumes when everyone locks in. Auto-lock in <b data-countdown>${Math.ceil(offer.expiresIn)}</b>s.</p>
+        <p class="draft-input-lock ${draftLocked ? 'locked' : 'ready'}">${draftLocked ? `LOOK OVER YOUR OPTIONS · CHOICES UNLOCK IN <b data-input-delay>${offer.acceptsInputIn.toFixed(1)}</b>s` : 'CHOICES UNLOCKED · SELECT WHEN READY'}</p>
         <div class="upgrade-status">
           ${offer.offers.map((entry) => {
             const player = snapshot.players.find((candidate) => candidate.id === entry.chooserId)
@@ -559,9 +569,9 @@ class DawnfallApp {
           ${localOffer.ids.map((id) => {
             const upgrade = upgradeById(id)
             const nextRank = (localPlayer?.perks[id] ?? 0) + 1
-            return `<button class="upgrade-card ${upgrade.category}" data-upgrade="${id}" style="--accent:${upgrade.accent}">${perkIconMarkup(id, 'upgrade-art')}<small>${upgrade.category === 'signature' ? `${characterById(upgrade.character!).name.toUpperCase()} SIGNATURE · ` : ''}${upgrade.maxLevel === 1 ? 'ONE-OF-ONE' : `RANK ${nextRank}/${upgrade.maxLevel}`}</small><strong>${upgrade.name}</strong><em>${upgrade.description}</em><b>LOCK CHOICE →</b></button>`
+            return `<button class="upgrade-card ${upgrade.category}" data-upgrade="${id}" style="--accent:${upgrade.accent}" ${draftLocked ? 'disabled aria-disabled="true"' : ''}>${perkIconMarkup(id, 'upgrade-art')}<small>${upgrade.category === 'signature' ? `${characterById(upgrade.character!).name.toUpperCase()} SIGNATURE · ` : ''}${upgrade.maxLevel === 1 ? 'ONE-OF-ONE' : `RANK ${nextRank}/${upgrade.maxLevel}`}</small><strong>${upgrade.name}</strong><em>${upgrade.description}</em><b>${draftLocked ? 'READ BEFORE CHOOSING' : 'LOCK CHOICE →'}</b></button>`
           }).join('')}
-        </div><div class="upgrade-actions"><button class="reroll-button" data-reroll ${localOffer.rerollsLeft > 0 ? '' : 'disabled'}>↻ REROLL ALL THREE · ${localOffer.rerollsLeft} LEFT</button></div>` : `<div class="upgrade-waiting"><span class="waiting-pulse"></span><strong>${localOffer?.selectedId ? escapeHtml(upgradeById(localOffer.selectedId).name.toUpperCase()) : 'WAITING FOR ACTIVE HUNTERS'}</strong><small>${localOffer?.selectedId ? 'Your build is ready. The night resumes after the remaining choices.' : 'Spectating this squad draft.'}</small></div>`}
+        </div><div class="upgrade-actions"><button class="reroll-button" data-reroll ${localOffer.rerollsLeft > 0 && !draftLocked ? '' : 'disabled'}>↻ REROLL ALL THREE · ${localOffer.rerollsLeft} LEFT</button></div>` : `<div class="upgrade-waiting"><span class="waiting-pulse"></span><strong>${localOffer?.selectedId ? escapeHtml(upgradeById(localOffer.selectedId).name.toUpperCase()) : 'WAITING FOR ACTIVE HUNTERS'}</strong><small>${localOffer?.selectedId ? 'Your build is ready. The night resumes after the remaining choices.' : 'Spectating this squad draft.'}</small></div>`}
       </section>`
     overlay.querySelectorAll<HTMLElement>('[data-upgrade]').forEach((button) => button.addEventListener('click', () => {
       const upgradeId = button.dataset.upgrade

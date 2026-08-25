@@ -16,6 +16,8 @@ import type {
 } from './types'
 
 const EMPTY_INPUT: InputState = { up: false, down: false, left: false, right: false, firing: false, interact: false, aim: 0 }
+const DRAFT_INPUT_DELAY = 0.5
+const SPAWN_PADDING = 110
 const BOSS_SCHEDULE: Array<{ at: number; type: BossType }> = [
   { at: 0.25, type: 'tollkeeper' },
   { at: 0.49, type: 'broodmother' },
@@ -38,14 +40,14 @@ const PET_UPGRADES: Partial<Record<string, CompanionKind>> = {
   shadecat: 'shadecat', 'storm-wisp': 'storm-wisp', thornling: 'thornling', sunbird: 'sunbird',
 }
 const COMPANION_ATTACKS: Record<CompanionKind, { cooldown: number; damage: number; speed: number; range: number; pierce: number; chain: number; burn: boolean; color: string }> = {
-  gravewing: { cooldown: 1.05, damage: 90, speed: 780, range: 470, pierce: 0, chain: 1, burn: false, color: '#f2d479' },
-  ashkit: { cooldown: 0.72, damage: 42, speed: 660, range: 350, pierce: 0, chain: 1, burn: true, color: '#ff735c' },
-  'aegis-hound': { cooldown: 1.2, damage: 58, speed: 520, range: 310, pierce: 3, chain: 0, burn: false, color: '#74d8c2' },
-  'mercy-moth': { cooldown: 1.35, damage: 30, speed: 600, range: 370, pierce: 0, chain: 1, burn: false, color: '#c9b9ff' },
-  shadecat: { cooldown: 0.58, damage: 72, speed: 920, range: 300, pierce: 2, chain: 0, burn: false, color: '#7f8cff' },
-  'storm-wisp': { cooldown: 0.95, damage: 44, speed: 680, range: 420, pierce: 0, chain: 3, burn: false, color: '#65bfff' },
-  thornling: { cooldown: 0.82, damage: 52, speed: 560, range: 320, pierce: 1, chain: 0, burn: false, color: '#e45d82' },
-  sunbird: { cooldown: 0.78, damage: 66, speed: 860, range: 440, pierce: 3, chain: 0, burn: false, color: '#ffd783' },
+  gravewing: { cooldown: 1.05, damage: 90, speed: 665, range: 470, pierce: 0, chain: 1, burn: false, color: '#f2d479' },
+  ashkit: { cooldown: 0.72, damage: 42, speed: 560, range: 350, pierce: 0, chain: 1, burn: true, color: '#ff735c' },
+  'aegis-hound': { cooldown: 1.2, damage: 58, speed: 445, range: 310, pierce: 3, chain: 0, burn: false, color: '#74d8c2' },
+  'mercy-moth': { cooldown: 1.35, damage: 30, speed: 510, range: 370, pierce: 0, chain: 1, burn: false, color: '#c9b9ff' },
+  shadecat: { cooldown: 0.58, damage: 72, speed: 780, range: 300, pierce: 2, chain: 0, burn: false, color: '#7f8cff' },
+  'storm-wisp': { cooldown: 0.95, damage: 44, speed: 580, range: 420, pierce: 0, chain: 3, burn: false, color: '#65bfff' },
+  thornling: { cooldown: 0.82, damage: 52, speed: 475, range: 320, pierce: 1, chain: 0, burn: false, color: '#e45d82' },
+  sunbird: { cooldown: 0.78, damage: 66, speed: 730, range: 440, pierce: 3, chain: 0, burn: false, color: '#ffd783' },
 }
 
 export class GameEngine {
@@ -81,6 +83,7 @@ export class GameEngine {
 
     if (this.snapshot.phase === 'upgrade') {
       if (this.snapshot.upgrade) {
+        this.snapshot.upgrade.acceptsInputIn = Math.max(0, this.snapshot.upgrade.acceptsInputIn - delta)
         this.snapshot.upgrade.expiresIn -= delta
         if (this.snapshot.upgrade.expiresIn <= 0) {
           const pending = this.snapshot.upgrade.offers.filter((offer) => !offer.selectedId)
@@ -101,8 +104,8 @@ export class GameEngine {
     this.updatePlayers(delta, inputs)
     this.updateCompanions(delta)
     this.updateStructures(delta)
-    this.handleSpawns(delta)
-    this.updateEnemies(delta)
+    this.handleSpawns(delta, inputs)
+    this.updateEnemies(delta, inputs)
     this.updateProjectiles(delta)
     this.updatePickups(delta)
     this.handleRevives(delta, inputs)
@@ -119,7 +122,7 @@ export class GameEngine {
     const draft = this.snapshot.upgrade
     const offer = draft?.offers.find((entry) => entry.chooserId === chooserId)
     const player = this.snapshot.players.find((entry) => entry.id === chooserId)
-    if (!draft || !offer || offer.selectedId || !player || this.snapshot.phase !== 'upgrade' || !offer.ids.includes(upgradeId)) return false
+    if (!draft || draft.acceptsInputIn > 0 || !offer || offer.selectedId || !player || this.snapshot.phase !== 'upgrade' || !offer.ids.includes(upgradeId)) return false
     const definition = upgradeById(upgradeId)
     if (definition.character && definition.character !== player.character) return false
 
@@ -156,7 +159,7 @@ export class GameEngine {
     const draft = this.snapshot.upgrade
     const offer = draft?.offers.find((entry) => entry.chooserId === chooserId)
     const player = this.snapshot.players.find((entry) => entry.id === chooserId)
-    if (!draft || !offer || offer.selectedId || !player || offer.rerollsLeft <= 0 || this.snapshot.phase !== 'upgrade') return false
+    if (!draft || draft.acceptsInputIn > 0 || !offer || offer.selectedId || !player || offer.rerollsLeft <= 0 || this.snapshot.phase !== 'upgrade') return false
     const nextChoices = this.createUpgradeChoices(player, new Set(offer.ids))
     if (nextChoices.length !== 3) return false
     offer.ids = nextChoices
@@ -324,7 +327,7 @@ export class GameEngine {
         y: player.y + Math.sin(angle) * 20,
         vx: Math.cos(angle) * projectileSpeed,
         vy: Math.sin(angle) * projectileSpeed,
-        radius: (critical ? 5.2 : 3.5) * Math.pow(1.25, rank(player, 'heavy-caliber')) * Math.pow(1.35, rank(player, 'rose-thorns')),
+        radius: (critical ? 6.6 : 4.5) * Math.pow(1.25, rank(player, 'heavy-caliber')) * Math.pow(1.35, rank(player, 'rose-thorns')),
         damage: baseDamage * (critical ? criticalMultiplier : 1),
         life: (weapon.id === 'scattergun' ? 0.58 : 1.25) * Math.pow(1.65, rank(player, 'ghost-rounds')),
         pierce: weapon.pierce + rank(player, 'piercing-rounds') * 2 + rank(player, 'veilshot') * 2 + rank(player, 'rose-thorns') * 2
@@ -378,7 +381,7 @@ export class GameEngine {
       const projectile: ProjectileState = {
         id: this.entityId++, ownerId: owner.id, x: companion.x, y: companion.y,
         vx: Math.cos(companion.aim) * attack.speed, vy: Math.sin(companion.aim) * attack.speed,
-        radius: companion.kind === 'aegis-hound' || companion.kind === 'sunbird' ? 5.5 : 4,
+        radius: companion.kind === 'aegis-hound' || companion.kind === 'sunbird' ? 6.8 : 5.2,
         damage: attack.damage, life: 0.9, pierce: attack.pierce, bounces: 0, enemy: false,
         chain: attack.chain, burn: attack.burn, color: attack.color,
       }
@@ -403,7 +406,7 @@ export class GameEngine {
           const owner = this.snapshot.players.find((player) => !player.eliminated)
           if (target && owner) {
             const angle = Math.atan2(target.y - structure.y, target.x - structure.x)
-            const projectile: ProjectileState = { id: this.entityId++, ownerId: owner.id, x: structure.x, y: structure.y, vx: Math.cos(angle) * 640, vy: Math.sin(angle) * 640, radius: 4, damage: 22, life: 0.8, pierce: 0, bounces: 0, enemy: false, chain: 0, burn: false, color: '#74d8c2' }
+            const projectile: ProjectileState = { id: this.entityId++, ownerId: owner.id, x: structure.x, y: structure.y, vx: Math.cos(angle) * 545, vy: Math.sin(angle) * 545, radius: 5.2, damage: 22, life: 0.9, pierce: 0, bounces: 0, enemy: false, chain: 0, burn: false, color: '#74d8c2' }
             this.snapshot.projectiles.push(projectile)
             this.projectileHits.set(projectile.id, new Set())
             structure.cooldown = 1.1
@@ -413,12 +416,12 @@ export class GameEngine {
     }
   }
 
-  private handleSpawns(dt: number) {
+  private handleSpawns(dt: number, inputs: ReadonlyMap<string, InputState>) {
     const progress = 1 - this.snapshot.timeRemaining / this.snapshot.duration
     const scheduled = BOSS_SCHEDULE[this.nextBossIndex]
     if (scheduled && progress >= scheduled.at && !this.snapshot.enemies.some((enemy) => isBoss(enemy.type))) {
       this.nextBossIndex += 1
-      this.spawnEnemy(scheduled.type, true)
+      this.spawnEnemy(scheduled.type, inputs)
       this.pushEvent('boss', undefined, undefined, `${BOSS_NAMES[scheduled.type]} HAS ENTERED THE HUNT`)
     }
 
@@ -433,16 +436,28 @@ export class GameEngine {
     if (progress > 0.34) pool.push('charger')
     if (progress > 0.48) pool.push('hexer')
     if (progress > 0.62) pool.push('bulwark')
-    for (let index = 0; index < count; index += 1) this.spawnEnemy(this.random.pick(pool), false)
+    for (let index = 0; index < count; index += 1) this.spawnEnemy(this.random.pick(pool), inputs)
     this.spawnTimer = Math.max(0.1, 0.62 - progress * 0.45) / playerScale
   }
 
-  private spawnEnemy(type: EnemyType, staged: boolean) {
+  private findOffscreenSpawn(inputs: ReadonlyMap<string, InputState>): { x: number; y: number } {
     const living = this.snapshot.players.filter((player) => !player.eliminated)
     const centerX = living.reduce((sum, player) => sum + player.x, 0) / Math.max(1, living.length)
     const centerY = living.reduce((sum, player) => sum + player.y, 0) / Math.max(1, living.length)
     const angle = this.random.range(0, Math.PI * 2)
-    const range = staged ? 520 : this.random.range(540, 770)
+    const squadRadius = living.reduce((furthest, player) => Math.max(furthest, Math.hypot(player.x - centerX, player.y - centerY)), 0)
+    const largestViewportRadius = living.reduce((largest, player) => {
+      const input = inputs.get(player.id)
+      const width = clamp(input?.viewportWidth ?? 1280, 320, 2560)
+      const height = clamp(input?.viewportHeight ?? 720, 240, 1440)
+      return Math.max(largest, Math.hypot(width / 2, height / 2))
+    }, Math.hypot(640, 360))
+    const range = squadRadius + largestViewportRadius + SPAWN_PADDING + this.random.range(0, 150)
+    return { x: centerX + Math.cos(angle) * range, y: centerY + Math.sin(angle) * range }
+  }
+
+  private spawnEnemy(type: EnemyType, inputs: ReadonlyMap<string, InputState>) {
+    const spawn = this.findOffscreenSpawn(inputs)
     const progress = 1 - this.snapshot.timeRemaining / this.snapshot.duration
     const regularScale = 1 + progress * 1.6 + Math.max(0, this.snapshot.players.length - 1) * 0.34
     const bossScale = (0.72 + this.snapshot.players.length * 0.3) * (1 + progress * 0.38)
@@ -464,17 +479,32 @@ export class GameEngine {
     const scale = isBoss(type) ? bossScale : regularScale
     this.snapshot.enemies.push({
       id: this.entityId++, type,
-      x: centerX + Math.cos(angle) * range, y: centerY + Math.sin(angle) * range,
+      x: spawn.x, y: spawn.y,
       vx: 0, vy: 0, health: base.hp * scale, maxHealth: base.hp * scale, radius: base.radius,
       speed: base.speed, damage: base.damage, attackCooldown: this.random.range(0, 0.45),
       burn: 0, burnTick: 0.5, slow: 0, phase: this.random.range(0, Math.PI * 2),
+      abilityCooldown: isBoss(type) ? this.random.range(1, 2) : 0,
+      summonCooldown: isBoss(type) ? this.random.range(3.2, 4.8) : 0,
+      contactCooldown: 0,
+      dashRemaining: 0,
+      dashAngle: 0,
+      strafeDirection: this.random.next() < 0.5 ? -1 : 1,
     })
   }
 
-  private updateEnemies(dt: number) {
+  private summonBossAdds(types: EnemyType[], inputs: ReadonlyMap<string, InputState>) {
+    if (this.snapshot.enemies.length + types.length >= 230) return
+    for (const type of types) this.spawnEnemy(type, inputs)
+  }
+
+  private updateEnemies(dt: number, inputs: ReadonlyMap<string, InputState>) {
     for (const enemy of this.snapshot.enemies) {
       if (enemy.health <= 0) continue
       enemy.attackCooldown = Math.max(0, enemy.attackCooldown - dt)
+      enemy.abilityCooldown = Math.max(0, (enemy.abilityCooldown ?? 0) - dt)
+      enemy.summonCooldown = Math.max(0, (enemy.summonCooldown ?? 0) - dt)
+      enemy.contactCooldown = Math.max(0, (enemy.contactCooldown ?? 0) - dt)
+      enemy.dashRemaining = Math.max(0, (enemy.dashRemaining ?? 0) - dt)
       enemy.slow = Math.max(0, enemy.slow - dt)
       enemy.phase += dt
       if (enemy.burn > 0) {
@@ -501,37 +531,106 @@ export class GameEngine {
       if ((enemy.type === 'spitter' || enemy.type === 'hexer') && distance < (enemy.type === 'hexer' ? 410 : 335)) {
         speed = distance < 220 ? -enemy.speed * 0.5 : 0
         if (enemy.attackCooldown <= 0) {
-          this.spawnEnemyProjectile(enemy, angle, enemy.type === 'hexer' ? 165 : 185, enemy.type === 'hexer' ? 9 : 7)
+          this.spawnEnemyProjectile(enemy, angle, enemy.type === 'hexer' ? 140 : 155, enemy.type === 'hexer' ? 9 : 7)
           enemy.attackCooldown = enemy.type === 'hexer' ? 2.45 : 2.05
         }
       }
-      if (enemy.type === 'tollkeeper' && enemy.phase % 3.5 < dt) {
-        for (let shot = 0; shot < 12; shot += 1) this.spawnEnemyProjectile(enemy, shot / 12 * Math.PI * 2 + enemy.phase, 155, 9)
+
+      if (enemy.type === 'tollkeeper') {
+        if (enemy.attackCooldown <= 0 && distance < 900) {
+          for (let shot = 0; shot < 12; shot += 1) this.spawnEnemyProjectile(enemy, shot / 12 * Math.PI * 2 + enemy.phase * 0.42, 118, 9)
+          enemy.attackCooldown = 3.3
+        }
+        if ((enemy.abilityCooldown ?? 0) <= 0) {
+          enemy.dashAngle = angle
+          enemy.dashRemaining = 0.62
+          enemy.abilityCooldown = 5.1
+          for (let shot = -1; shot <= 1; shot += 1) this.spawnEnemyProjectile(enemy, angle + shot * 0.18, 128, 10)
+        }
+        if ((enemy.summonCooldown ?? 0) <= 0) {
+          this.summonBossAdds(['thrall', 'thrall', 'wraith'], inputs)
+          enemy.summonCooldown = 8.2
+        }
       }
-      if (enemy.type === 'broodmother' && enemy.phase % 3.1 < dt) {
-        for (let shot = 0; shot < 9; shot += 1) this.spawnEnemyProjectile(enemy, shot / 9 * Math.PI * 2 - enemy.phase * 0.35, 142, 8)
+
+      if (enemy.type === 'broodmother') {
+        if (distance < 260) angle += Math.PI
+        if (enemy.attackCooldown <= 0 && distance < 940) {
+          for (let shot = 0; shot < 10; shot += 1) this.spawnEnemyProjectile(enemy, shot / 10 * Math.PI * 2 - enemy.phase * 0.5, 108, 8)
+          enemy.attackCooldown = 2.85
+        }
+        if ((enemy.abilityCooldown ?? 0) <= 0) {
+          enemy.dashAngle = angle + (enemy.strafeDirection ?? 1) * Math.PI / 2
+          enemy.dashRemaining = 0.5
+          enemy.abilityCooldown = 4.6
+          enemy.strafeDirection = -(enemy.strafeDirection ?? 1)
+        }
+        if ((enemy.summonCooldown ?? 0) <= 0) {
+          this.summonBossAdds(['skitter', 'skitter', 'skitter', 'skitter', 'skitter', 'leech', 'leech'], inputs)
+          enemy.summonCooldown = 5.8
+        }
       }
-      if (enemy.type === 'graveknight' && enemy.phase % 2.8 < dt) {
-        for (let shot = -2; shot <= 2; shot += 1) this.spawnEnemyProjectile(enemy, angle + shot * 0.16, 178, 11)
+
+      if (enemy.type === 'graveknight') {
+        if (enemy.attackCooldown <= 0 && distance < 850) {
+          for (let shot = -2; shot <= 2; shot += 1) this.spawnEnemyProjectile(enemy, angle + shot * 0.16, 145, 11)
+          enemy.attackCooldown = 2.4
+        }
+        if ((enemy.abilityCooldown ?? 0) <= 0) {
+          enemy.dashAngle = angle
+          enemy.dashRemaining = 0.78
+          enemy.abilityCooldown = 4.1
+          for (let shot = -3; shot <= 3; shot += 1) this.spawnEnemyProjectile(enemy, angle + shot * 0.09, 150, 12)
+        }
+        if ((enemy.summonCooldown ?? 0) <= 0) {
+          this.summonBossAdds(['wraith', 'wraith', 'wraith'], inputs)
+          enemy.summonCooldown = 8.4
+        }
       }
-      if (enemy.type === 'eclipse-eye' && enemy.phase % 2.6 < dt) {
-        for (let shot = 0; shot < 16; shot += 1) this.spawnEnemyProjectile(enemy, shot / 16 * Math.PI * 2 + enemy.phase * 0.55, 135, 10)
+
+      if (enemy.type === 'eclipse-eye') {
+        angle += (enemy.strafeDirection ?? 1) * (distance > 520 ? 0.55 : distance < 300 ? 2.2 : 1.35)
+        speed *= 1.2
+        if (enemy.attackCooldown <= 0 && distance < 980) {
+          for (let shot = 0; shot < 16; shot += 1) this.spawnEnemyProjectile(enemy, shot / 16 * Math.PI * 2 + enemy.phase * 0.7, 105, 10)
+          enemy.attackCooldown = 2.35
+        }
+        if ((enemy.abilityCooldown ?? 0) <= 0) {
+          enemy.dashAngle = angle
+          enemy.dashRemaining = 0.58
+          enemy.abilityCooldown = 4.2
+          enemy.strafeDirection = -(enemy.strafeDirection ?? 1)
+          const aimed = Math.atan2(target.y - enemy.y, target.x - enemy.x)
+          for (let shot = -2; shot <= 2; shot += 1) this.spawnEnemyProjectile(enemy, aimed + shot * 0.12, 132, 10)
+        }
+        if ((enemy.summonCooldown ?? 0) <= 0) {
+          this.summonBossAdds(['hexer', 'hexer', 'wraith', 'wraith'], inputs)
+          enemy.summonCooldown = 7.2
+        }
+      }
+
+      if ((enemy.dashRemaining ?? 0) > 0 && isBoss(enemy.type)) {
+        angle = enemy.dashAngle ?? angle
+        const dashMultiplier = enemy.type === 'graveknight' ? 5.4 : enemy.type === 'tollkeeper' ? 4.8 : enemy.type === 'eclipse-eye' ? 4.3 : 3.6
+        speed = enemy.speed * dashMultiplier * (enemy.slow > 0 ? 0.72 : 1)
       }
 
       enemy.vx = Math.cos(angle) * speed
       enemy.vy = Math.sin(angle) * speed
       enemy.x += enemy.vx * dt
       enemy.y += enemy.vy * dt
-      if (distance < enemy.radius + 13 && enemy.attackCooldown <= 0) {
+      const canContact = isBoss(enemy.type) ? (enemy.contactCooldown ?? 0) <= 0 : enemy.attackCooldown <= 0
+      if (distance < enemy.radius + 13 && canContact) {
         this.damagePlayer(target, enemy.damage)
-        enemy.attackCooldown = isBoss(enemy.type) ? 0.72 : 1
+        if (isBoss(enemy.type)) enemy.contactCooldown = 0.72
+        else enemy.attackCooldown = 1
       }
     }
     this.snapshot.enemies = this.snapshot.enemies.filter((enemy) => enemy.health > 0)
   }
 
   private spawnEnemyProjectile(enemy: EnemyState, angle: number, speed: number, damage: number) {
-    this.snapshot.projectiles.push({ id: this.entityId++, ownerId: `enemy-${enemy.id}`, x: enemy.x, y: enemy.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, radius: 5, damage, life: 4, pierce: 0, bounces: 0, enemy: true, chain: 0, burn: false, color: '#ef718e' })
+    this.snapshot.projectiles.push({ id: this.entityId++, ownerId: `enemy-${enemy.id}`, x: enemy.x, y: enemy.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, radius: 6.5, damage, life: 4.5, pierce: 0, bounces: 0, enemy: true, chain: 0, burn: false, color: '#ef718e' })
   }
 
   private updateProjectiles(dt: number) {
@@ -728,7 +827,7 @@ export class GameEngine {
       .map((player) => ({ chooserId: player.id, ids: this.createUpgradeChoices(player), rerollsLeft: 3 }))
       .filter((offer) => offer.ids.length > 0)
     if (offers.length === 0) return
-    this.snapshot.upgrade = { level: leader.level, offers, expiresIn: 20 }
+    this.snapshot.upgrade = { level: leader.level, offers, expiresIn: 20, acceptsInputIn: DRAFT_INPUT_DELAY }
     this.snapshot.phase = 'upgrade'
     this.pushEvent('level', undefined, undefined, `SQUAD LEVEL READY · ${offers.length} BUILDS ARE BRANCHING`)
   }

@@ -218,6 +218,8 @@ body::before {
 .upgrade-draft { position: absolute; left: 50%; top: 50%; width: min(980px, calc(100% - 40px)); transform: translate(-50%, -50%); text-align: center; }
 .upgrade-draft h2 { margin: 0; color: var(--ink); font: 500 clamp(30px, 5vw, 58px) 'Oswald', sans-serif; letter-spacing: .03em; }
 .upgrade-draft > p:not(.eyebrow) { color: var(--muted); font-size: 10px; }
+.upgrade-draft > p.draft-input-lock { margin: 12px auto 0; color: var(--gold); font-size: 9px; letter-spacing: .14em; }
+.upgrade-draft > p.draft-input-lock.ready { color: var(--teal); }
 .upgrade-status { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin: 15px auto 0; }
 .upgrade-status > div { min-width: 132px; display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 0 9px; padding: 7px 10px; border: 1px solid rgba(239,113,142,.28); background: rgba(5,14,11,.8); text-align: left; }
 .upgrade-status > div.ready { border-color: rgba(116,216,194,.38); }
@@ -228,7 +230,7 @@ body::before {
 .upgrade-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 30px; text-align: left; }
 .upgrade-card { min-height: 270px; display: flex; flex-direction: column; align-items: flex-start; padding: 24px; border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent); background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 7%, #0a1612), #08110e); transition: transform .15s, border-color .15s; }
 .upgrade-card:not(:disabled):hover { transform: translateY(-5px); border-color: var(--accent); }
-.upgrade-card:disabled { cursor: default; }
+.upgrade-card:disabled { opacity: .68; cursor: default; filter: saturate(.72); }
 .upgrade-card > span { width: 48px; height: 48px; display: grid; place-items: center; margin-bottom: 30px; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); font: 24px Georgia, serif; }
 .upgrade-card small { color: var(--accent); font-size: 8px; letter-spacing: .12em; }
 .upgrade-card strong { margin: 8px 0 13px; color: var(--ink); font: 500 24px 'Oswald', sans-serif; text-transform: uppercase; }
