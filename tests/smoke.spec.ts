@@ -15,7 +15,7 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
   await expect(page.getByText('CHOOSE YOUR HUNTER')).toBeVisible()
   await expect(page.locator('.portrait-art')).toHaveCount(8)
   await expect(page.locator('.portrait-art').first()).toHaveCSS('background-image', /hunter-portraits-v2\.webp/)
-  await expect(page.locator('.weapon-art')).toHaveCount(9)
+  await expect(page.locator('.weapon-art')).toHaveCount(10)
   await expect(page.locator('[data-weapon="seeker"]')).toContainText('Nightjar')
   const initialCharacter = await page.locator('[data-character].selected').getAttribute('data-character')
   await page.getByTestId('random-character').click()
@@ -23,6 +23,9 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
   const initialWeapon = await page.locator('[data-weapon].selected').getAttribute('data-weapon')
   await page.getByTestId('random-weapon').click()
   await expect(page.locator('[data-weapon].selected')).not.toHaveAttribute('data-weapon', initialWeapon!)
+  await page.locator('[data-weapon="sword"]').click()
+  await expect(page.locator('[data-weapon="sword"]')).toHaveClass(/selected/)
+  await expect(page.locator('[data-weapon="sword"] .weapon-art')).toHaveCSS('background-image', /sword-dawncleaver\.webp/)
   await page.getByTestId('launch-button').click()
   await expect(page.getByTestId('game-shell')).toBeVisible()
   await expect(page.locator('#game-canvas')).toBeVisible()
@@ -30,7 +33,7 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
   await page.mouse.down()
   await page.waitForTimeout(550)
   await page.mouse.up()
-  await expect(page.locator('#ammo-hud strong')).not.toHaveText('6 / 6')
+  await expect(page.locator('#ammo-hud strong')).toHaveText('∞')
   const loadedArt = await page.evaluate(() => performance.getEntriesByType('resource')
     .map((entry) => entry.name)
     .filter((name) => name.includes('/art/')))
@@ -38,6 +41,7 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
     expect.stringContaining('hero-night.webp'),
     expect.stringContaining('hunter-portraits-v2.webp'),
     expect.stringContaining('armory-atlas-v2.webp'),
+    expect.stringContaining('sword-dawncleaver.webp'),
     expect.stringContaining('hunter-sprites-v2.webp'),
     expect.stringContaining('companion-sprites-v1.webp'),
     expect.stringContaining('enemy-sprites.webp'),

@@ -33,6 +33,8 @@ export interface WeaponDefinition {
   homing?: number
   slowDuration?: number
   alwaysBurn?: boolean
+  infiniteAmmo?: boolean
+  melee?: boolean
 }
 
 export const CHARACTERS: CharacterDefinition[] = [
@@ -56,10 +58,12 @@ export const WEAPONS: WeaponDefinition[] = [
   { id: 'flamethrower', name: 'Cinderhose', glyph: '♨', description: 'A short inferno floods close lanes and always ignites.', damage: 5, fireRate: 9, projectiles: 2, magazine: 50, reload: 1.9, speed: 330, spread: 0.28, pierce: 0, chain: 0, life: 0.32, radius: 6, alwaysBurn: true, color: '#ff735c' },
   { id: 'frost-cannon', name: 'Wintermute', glyph: '❄', description: 'Massive crystal rounds pierce and freeze the horde.', damage: 45, fireRate: 1.05, projectiles: 1, magazine: 6, reload: 1.6, speed: 310, spread: 0.012, pierce: 2, chain: 0, life: 1.8, radius: 12, slowDuration: 4, color: '#9bdcff' },
   { id: 'seeker', name: 'Nightjar', glyph: '⌁', description: 'Paired spectral missiles bend toward living targets.', damage: 24, fireRate: 2, projectiles: 2, magazine: 8, reload: 1.65, speed: 420, spread: 0.16, pierce: 0, chain: 0, life: 2, radius: 6.5, homing: 3.8, color: '#9c82ff' },
+  { id: 'sword', name: 'Dawncleaver', glyph: '†', description: 'An endless close-range sweep that cuts through packed enemies.', damage: 18, fireRate: 1.8, projectiles: 3, magazine: 1, reload: 0, speed: 340, spread: 0.85, pierce: 1, chain: 0, life: 0.26, radius: 10, color: '#fff0bd', infiniteAmmo: true, melee: true },
 ]
 
-const common = (definition: Omit<UpgradeDefinition, 'category' | 'character'>): UpgradeDefinition => ({ ...definition, category: 'common' })
-const signature = (character: CharacterId, definition: Omit<UpgradeDefinition, 'category' | 'character'>): UpgradeDefinition => ({ ...definition, category: 'signature', character })
+const common = (definition: Omit<UpgradeDefinition, 'category' | 'character' | 'weapon'>): UpgradeDefinition => ({ ...definition, category: 'common' })
+const signature = (character: CharacterId, definition: Omit<UpgradeDefinition, 'category' | 'character' | 'weapon'>): UpgradeDefinition => ({ ...definition, category: 'signature', character })
+const armament = (weapon: WeaponId, definition: Omit<UpgradeDefinition, 'category' | 'character' | 'weapon'>): UpgradeDefinition => ({ ...definition, category: 'weapon', weapon })
 
 export const UPGRADES: UpgradeDefinition[] = [
   common({ id: 'quick-hands', name: 'Quick Hands', icon: '↻', description: 'Reloads complete 42% faster.', maxLevel: 1, accent: '#f2d479' }),
@@ -86,6 +90,27 @@ export const UPGRADES: UpgradeDefinition[] = [
   common({ id: 'iron-heart', name: 'Last Stand', icon: '⬟', description: 'Below half health, gain +35% damage and +20% speed.', maxLevel: 1, accent: '#d58b72' }),
   common({ id: 'kinetic-shell', name: 'Kinetic Shell', icon: '◉', description: 'Extend post-hit immunity from 0.42 to 0.70 seconds.', maxLevel: 1, accent: '#7ed5ca' }),
   common({ id: 'ghost-rounds', name: 'Ghost Rounds', icon: '◌', description: 'Shots last 65% longer and pass through two more enemies.', maxLevel: 1, accent: '#a9c9d8' }),
+
+  armament('revolver', { id: 'last-chamber', name: 'Last Chamber', icon: '✹', description: 'The final round in each cylinder is a guaranteed critical and pierces two more enemies.', maxLevel: 1, accent: '#f2d479' }),
+  armament('revolver', { id: 'fan-the-hammer', name: 'Fan the Hammer', icon: '»', description: 'Oathkeeper fires 70% faster.', maxLevel: 1, accent: '#e9ba68' }),
+  armament('scattergun', { id: 'sawed-off-crown', name: 'Sawed-Off Crown', icon: '≋', description: 'Gravesong adds three shells and carves a wider fan.', maxLevel: 1, accent: '#d8b98a' }),
+  armament('scattergun', { id: 'funeral-load', name: 'Funeral Load', icon: 'Ⅳ', description: 'Every fourth Gravesong blast deals 80% more damage.', maxLevel: 1, accent: '#c9a678' }),
+  armament('arc-rifle', { id: 'storm-capacitor', name: 'Storm Capacitor', icon: 'ϟ', description: 'Blue Ruin chains into three additional enemies.', maxLevel: 1, accent: '#65bfff' }),
+  armament('arc-rifle', { id: 'feedback-loop', name: 'Feedback Loop', icon: '↝', description: 'Blue Ruin chain strikes retain 25% more of the original hit.', maxLevel: 1, accent: '#8ed7ff' }),
+  armament('burst-carbine', { id: 'fourfold-doctrine', name: 'Fourfold Doctrine', icon: 'Ⅳ', description: 'Threefold adds a fourth round to every burst.', maxLevel: 1, accent: '#f1d9a2' }),
+  armament('burst-carbine', { id: 'burst-discipline', name: 'Burst Discipline', icon: '⊙', description: 'Threefold gains 35% damage and a dramatically tighter spread.', maxLevel: 1, accent: '#e6c994' }),
+  armament('railgun', { id: 'final-judgment', name: 'Final Judgment', icon: '⇥', description: 'Last Verdict gains 80% damage and pierces two more bodies.', maxLevel: 1, accent: '#fff0bd' }),
+  armament('railgun', { id: 'echo-rail', name: 'Echo Rail', icon: 'Ⅱ', description: 'Last Verdict fires a second parallel rail; each rail deals 28% less damage.', maxLevel: 1, accent: '#f2d479' }),
+  armament('grenade-launcher', { id: 'cluster-heaven', name: 'Cluster Heaven', icon: '✺', description: 'Starfall explosions grow by 70 radius.', maxLevel: 1, accent: '#e8b85f' }),
+  armament('grenade-launcher', { id: 'black-powder-sun', name: 'Black-Powder Sun', icon: '☀', description: 'Starfall explosion damage increases by 90%.', maxLevel: 1, accent: '#ffbd5d' }),
+  armament('flamethrower', { id: 'napalm-scripture', name: 'Napalm Scripture', icon: '♨', description: 'Cinderhose burns last twice as long.', maxLevel: 1, accent: '#ff735c' }),
+  armament('flamethrower', { id: 'three-headed-flame', name: 'Three-Headed Flame', icon: '≡', description: 'Cinderhose gains a third stream and floods a wider lane.', maxLevel: 1, accent: '#ff9564' }),
+  armament('frost-cannon', { id: 'absolute-zero', name: 'Absolute Zero', icon: '❄', description: 'Wintermute freezes for six seconds and pierces two more enemies.', maxLevel: 1, accent: '#9bdcff' }),
+  armament('frost-cannon', { id: 'shatter-core', name: 'Shatter Core', icon: '◆', description: 'Wintermute crystals gain 65% damage and 50% size.', maxLevel: 1, accent: '#c3ecff' }),
+  armament('seeker', { id: 'murder-of-nightjars', name: 'Murder of Nightjars', icon: '✣', description: 'Nightjar launches two additional homing missiles.', maxLevel: 1, accent: '#9c82ff' }),
+  armament('seeker', { id: 'apex-guidance', name: 'Apex Guidance', icon: '◎', description: 'Nightjar missiles turn harder, fly longer, and deal 35% more damage.', maxLevel: 1, accent: '#b09aff' }),
+  armament('sword', { id: 'whirling-dawn', name: 'Whirling Dawn', icon: '☼', description: 'Dawncleaver becomes a nine-slash full-circle whirlwind.', maxLevel: 1, accent: '#fff0bd' }),
+  armament('sword', { id: 'blood-edge', name: 'Blood Edge', icon: '♥', description: 'Dawncleaver kills restore 2% of maximum health.', maxLevel: 1, accent: '#ef718e' }),
 
   signature('vesper', { id: 'deadeye-rhythm', name: 'Deadeye Rhythm', icon: 'Ⅳ', description: 'Every fourth trigger pull is a guaranteed critical hit.', maxLevel: 1, accent: '#f2d479' }),
   signature('vesper', { id: 'golden-bullet', name: 'Golden Bullet', icon: '✹', description: 'Critical hits deal 75% more damage.', maxLevel: 1, accent: '#ffd86b' }),

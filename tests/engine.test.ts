@@ -13,22 +13,26 @@ const clearDraftInputDelay = (engine: GameEngine, inputs: ReadonlyMap<string, In
 }
 
 describe('GameEngine', () => {
-  it('keeps every rare upgrade one-of-one with five signatures per hunter', () => {
+  it('keeps every rare upgrade one-of-one with five signatures per hunter and two perks per armament', () => {
     expect(UPGRADES.every((upgrade) => upgrade.maxLevel === 1)).toBe(true)
     for (const character of CHARACTERS) {
       expect(UPGRADES.filter((upgrade) => upgrade.character === character.id)).toHaveLength(5)
     }
+    for (const weapon of WEAPONS) {
+      expect(UPGRADES.filter((upgrade) => upgrade.weapon === weapon.id)).toHaveLength(2)
+    }
   })
 
-  it('offers nine weapons with distinct firing signatures and special payloads', () => {
-    expect(WEAPONS).toHaveLength(9)
-    expect(new Set(WEAPONS.map((weapon) => weapon.id)).size).toBe(9)
+  it('offers ten weapons with distinct firing signatures and special payloads', () => {
+    expect(WEAPONS).toHaveLength(10)
+    expect(new Set(WEAPONS.map((weapon) => weapon.id)).size).toBe(10)
     const signatures = WEAPONS.map((weapon) => [
       weapon.damage, weapon.fireRate, weapon.projectiles, weapon.magazine, weapon.speed, weapon.spread,
       weapon.pierce, weapon.chain, weapon.life, weapon.radius, weapon.blastRadius ?? 0,
       weapon.homing ?? 0, weapon.slowDuration ?? 0, Number(Boolean(weapon.alwaysBurn)),
+      Number(Boolean(weapon.infiniteAmmo)), Number(Boolean(weapon.melee)),
     ].join(':'))
-    expect(new Set(signatures).size).toBe(9)
+    expect(new Set(signatures).size).toBe(10)
 
     for (const weapon of WEAPONS) {
       const armedPlayer = { ...player, weapon: weapon.id }
@@ -60,6 +64,35 @@ describe('GameEngine', () => {
     })
     seeker.step(0.05, new Map([[player.id, { ...idle, firing: true }]]))
     expect(seeker.snapshot.projectiles.every((projectile) => projectile.homing === 3.8 && projectile.vy > 0)).toBe(true)
+
+    const sword = new GameEngine([{ ...player, weapon: 'sword' }], 240, 56)
+    sword.step(0.05, new Map([[player.id, { ...idle, firing: true }]]))
+    expect(sword.snapshot.players[0].ammo).toBe(1)
+    expect(sword.snapshot.projectiles).toHaveLength(3)
+    expect(sword.snapshot.projectiles.every((projectile) => projectile.melee && projectile.life < 0.3)).toBe(true)
+  })
+
+  it('turns weapon-specific perks into dramatic armament changes', () => {
+    const revolver = new GameEngine([player], 240, 57)
+    revolver.snapshot.players[0].perks['last-chamber'] = 1
+    revolver.snapshot.players[0].ammo = 1
+    revolver.step(0.05, new Map([[player.id, { ...idle, firing: true }]]))
+    expect(revolver.snapshot.projectiles[0].damage).toBeGreaterThan(WEAPONS.find((weapon) => weapon.id === 'revolver')!.damage * 2)
+    expect(revolver.snapshot.projectiles[0].pierce).toBeGreaterThanOrEqual(2)
+
+    const grenade = new GameEngine([{ ...player, weapon: 'grenade-launcher' }], 240, 58)
+    grenade.snapshot.players[0].perks['cluster-heaven'] = 1
+    grenade.snapshot.players[0].perks['black-powder-sun'] = 1
+    grenade.step(0.05, new Map([[player.id, { ...idle, firing: true }]]))
+    expect(grenade.snapshot.projectiles[0].blastRadius).toBe(190)
+    expect(grenade.snapshot.projectiles[0].blastDamage).toBeGreaterThanOrEqual(64)
+
+    const sword = new GameEngine([{ ...player, weapon: 'sword' }], 240, 59)
+    sword.snapshot.players[0].perks['whirling-dawn'] = 1
+    sword.step(0.05, new Map([[player.id, { ...idle, firing: true }]]))
+    expect(sword.snapshot.projectiles).toHaveLength(9)
+    const directions = new Set(sword.snapshot.projectiles.map((projectile) => Math.round(Math.atan2(projectile.vy, projectile.vx) * 100)))
+    expect(directions.size).toBe(9)
   })
 
   it('detonates Starfall shells across clustered enemies', () => {
@@ -163,6 +196,16 @@ describe('GameEngine', () => {
     engine.step(1 / 60, new Map([[player.id, idle]]))
     const signatureIds = new Set(['stormchain', 'thunderhead', 'charged-mag', 'ball-lightning', 'storm-wisp'])
     expect(engine.snapshot.upgrade?.offers[0].ids.some((id) => signatureIds.has(id))).toBe(true)
+  })
+
+  it('drafts one character perk, one current-weapon perk, and one common power', () => {
+    const engine = new GameEngine([{ ...player, character: 'tempest', weapon: 'arc-rifle' }], 240, 102)
+    engine.snapshot.players[0].xp = engine.snapshot.players[0].xpToNext
+    engine.step(1 / 60, new Map([[player.id, idle]]))
+    const choices = engine.snapshot.upgrade!.offers[0].ids.map((id) => UPGRADES.find((upgrade) => upgrade.id === id)!)
+    expect(choices.map((upgrade) => upgrade.category).sort()).toEqual(['common', 'signature', 'weapon'])
+    expect(choices.find((upgrade) => upgrade.category === 'signature')?.character).toBe('tempest')
+    expect(choices.find((upgrade) => upgrade.category === 'weapon')?.weapon).toBe('arc-rifle')
   })
 
   it('gives every hunter three personal rerolls without changing the other draft', () => {

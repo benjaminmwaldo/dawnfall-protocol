@@ -136,6 +136,7 @@ export class GameEngine {
     if (!draft || draft.acceptsInputIn > 0 || !offer || offer.selectedId || !player || this.snapshot.phase !== 'upgrade' || !offer.ids.includes(upgradeId)) return false
     const definition = upgradeById(upgradeId)
     if (definition.character && definition.character !== player.character) return false
+    if (definition.weapon && definition.weapon !== player.weapon) return false
 
     const current = rank(player, upgradeId)
     if (current >= definition.maxLevel) return false
@@ -281,47 +282,60 @@ export class GameEngine {
   private tryFire(player: PlayerState) {
     const weapon = weaponById(player.weapon)
     if (player.fireCooldown > 0) return
-    if (player.ammo <= 0) { this.startReload(player); return }
+    if (!weapon.infiniteAmmo && player.ammo <= 0) { this.startReload(player); return }
 
     const ritualBoost = this.snapshot.structures.some((structure) => structure.type === 'ritual-stone' && distanceSquared(player.x, player.y, structure.x, structure.y) < structure.radius * structure.radius)
-    const emptyMagazineRatio = 1 - player.ammo / Math.max(1, player.maxAmmo)
+    const emptyMagazineRatio = weapon.infiniteAmmo ? 0 : 1 - player.ammo / Math.max(1, player.maxAmmo)
     const burningNearby = player.character === 'cinder' && rank(player, 'ash-step') > 0 && this.snapshot.enemies.some((enemy) => enemy.burn > 0 && distanceSquared(player.x, player.y, enemy.x, enemy.y) < 260 * 260)
+    const lastChamber = player.weapon === 'revolver' && rank(player, 'last-chamber') > 0 && player.ammo === 1
     const fireRate = weapon.fireRate
       * Math.pow(1.32, rank(player, 'barrage'))
       * (1 + emptyMagazineRatio * rank(player, 'relentless') * 0.6)
       * (1 + rank(player, 'charged-mag') * 0.35)
+      * (1 + rank(player, 'fan-the-hammer') * 0.7)
       * Math.pow(1.12, this.snapshot.teamBuffs['quicksilver-bell'] ?? 0)
       * (burningNearby ? 1.35 : 1)
       * (ritualBoost ? 1.25 : 1)
     player.fireCooldown = 1 / fireRate
-    player.ammo -= 1
+    if (!weapon.infiniteAmmo) player.ammo -= 1
     player.shotCount += 1
 
     const bonusProjectiles = rank(player, 'double-tap') + rank(player, 'twin-fangs') + rank(player, 'radiant-volley')
+      + rank(player, 'sawed-off-crown') * 3 + rank(player, 'fourfold-doctrine') + rank(player, 'echo-rail')
+      + rank(player, 'three-headed-flame') + rank(player, 'murder-of-nightjars') * 2 + rank(player, 'whirling-dawn') * 6
     const projectileCount = weapon.projectiles + bonusProjectiles
-    const totalSpread = weapon.spread + Math.max(0, projectileCount - weapon.projectiles) * 0.075
+    let totalSpread = weapon.spread + Math.max(0, projectileCount - weapon.projectiles) * 0.075
+      + rank(player, 'sawed-off-crown') * 0.2 + rank(player, 'three-headed-flame') * 0.18
+    totalSpread *= Math.pow(0.35, rank(player, 'burst-discipline'))
+    if (rank(player, 'whirling-dawn') > 0) totalSpread = Math.PI * 2 * (projectileCount - 1) / projectileCount
     for (let index = 0; index < projectileCount; index += 1) {
       const offset = projectileCount === 1 ? 0 : (index / (projectileCount - 1) - 0.5) * totalSpread
-      const jitter = this.random.range(-weapon.spread * 0.08, weapon.spread * 0.08)
+      const jitter = weapon.melee ? 0 : this.random.range(-weapon.spread * 0.08, weapon.spread * 0.08)
       const angle = player.aim + offset + jitter
       const cadence = player.character === 'vesper' ? Math.max(2, 6 - rank(player, 'deadeye-rhythm') * 2 - (player.awakened ? 2 : 0)) : 0
-      const forcedCritical = cadence > 0 && player.shotCount % cadence === 0
+      const forcedCritical = lastChamber || (cadence > 0 && player.shotCount % cadence === 0)
       const still = Math.hypot(player.vx, player.vy) < 8
       const criticalChance = 0.06 + rank(player, 'overcharge') * 0.2
         + (player.character === 'seraph' ? 0.08 : 0)
         + rank(player, 'halo-crit') * 0.18
         + (still ? rank(player, 'stillness') * 0.18 : 0)
       const critical = forcedCritical || this.random.next() < criticalChance
-      const damagePenalty = Math.pow(0.88, rank(player, 'double-tap')) * Math.pow(0.92, rank(player, 'twin-fangs'))
+      const damagePenalty = Math.pow(0.88, rank(player, 'double-tap')) * Math.pow(0.92, rank(player, 'twin-fangs')) * Math.pow(0.72, rank(player, 'echo-rail'))
       const lastStand = rank(player, 'iron-heart') > 0 && player.health <= player.maxHealth * 0.5
+      const funeralLoad = player.weapon === 'scattergun' && rank(player, 'funeral-load') > 0 && player.shotCount % 4 === 0
       const baseDamage = weapon.damage
         * Math.pow(1.45, rank(player, 'heavy-caliber'))
         * Math.pow(1.18, rank(player, 'longshot'))
         * Math.pow(1.3, rank(player, 'veilshot'))
         * Math.pow(1.25, rank(player, 'sunlance'))
+        * Math.pow(1.35, rank(player, 'burst-discipline'))
+        * Math.pow(1.8, rank(player, 'final-judgment'))
+        * Math.pow(1.65, rank(player, 'shatter-core'))
+        * Math.pow(1.35, rank(player, 'apex-guidance'))
         * Math.pow(1.15, this.snapshot.teamBuffs['grave-edge'] ?? 0)
         * (still ? Math.pow(1.4, rank(player, 'stillness')) : 1)
         * (lastStand ? 1.35 : 1)
+        * (funeralLoad ? 1.8 : 1)
         * damagePenalty
       const criticalMultiplier = 2.2
         * Math.pow(1.75, rank(player, 'golden-bullet'))
@@ -338,29 +352,33 @@ export class GameEngine {
         y: player.y + Math.sin(angle) * 20,
         vx: Math.cos(angle) * projectileSpeed,
         vy: Math.sin(angle) * projectileSpeed,
-        radius: weapon.radius * (critical ? 1.47 : 1) * Math.pow(1.25, rank(player, 'heavy-caliber')) * Math.pow(1.35, rank(player, 'rose-thorns')),
+        radius: weapon.radius * (critical ? 1.47 : 1) * Math.pow(1.25, rank(player, 'heavy-caliber')) * Math.pow(1.35, rank(player, 'rose-thorns')) * Math.pow(1.5, rank(player, 'shatter-core')),
         damage: baseDamage * (critical ? criticalMultiplier : 1),
-        life: weapon.life * Math.pow(1.65, rank(player, 'ghost-rounds')),
+        life: weapon.life * Math.pow(1.65, rank(player, 'ghost-rounds')) * Math.pow(1.5, rank(player, 'apex-guidance')),
         pierce: weapon.pierce + rank(player, 'piercing-rounds') * 2 + rank(player, 'veilshot') * 2 + rank(player, 'rose-thorns') * 2
           + rank(player, 'ghost-rounds') * 2
+          + rank(player, 'final-judgment') * 2 + rank(player, 'absolute-zero') * 2
+          + (lastChamber ? 2 : 0)
           + (forcedCritical && player.awakened ? 1 : 0)
           + (critical && player.character === 'seraph' && player.awakened ? 1 : 0),
         bounces: 0,
         enemy: false,
         chain: weapon.chain + rank(player, 'static-link') * 2 + rank(player, 'ricochet-oath') * 2
-          + (player.character === 'tempest' ? 1 : 0) + rank(player, 'stormchain') * 2,
+          + (player.character === 'tempest' ? 1 : 0) + rank(player, 'stormchain') * 2 + rank(player, 'storm-capacitor') * 3,
         burn: Boolean(weapon.alwaysBurn) || player.character === 'cinder' || rank(player, 'combustion') > 0,
         color: critical ? '#fff2ad' : weapon.color ?? player.color,
-        blastRadius: weapon.blastRadius,
-        blastDamage: weapon.blastDamage ? weapon.blastDamage * (baseDamage / weapon.damage) * (critical ? criticalMultiplier : 1) : undefined,
-        homing: weapon.homing,
-        slowDuration: weapon.slowDuration,
+        blastRadius: weapon.blastRadius ? weapon.blastRadius + rank(player, 'cluster-heaven') * 70 : undefined,
+        blastDamage: weapon.blastDamage ? weapon.blastDamage * (baseDamage / weapon.damage) * (critical ? criticalMultiplier : 1) * Math.pow(1.9, rank(player, 'black-powder-sun')) : undefined,
+        homing: weapon.homing ? weapon.homing * Math.pow(1.7, rank(player, 'apex-guidance')) : undefined,
+        slowDuration: rank(player, 'absolute-zero') > 0 ? 6 : weapon.slowDuration,
+        burnDuration: weapon.alwaysBurn ? 2.5 * Math.pow(2, rank(player, 'napalm-scripture')) : undefined,
+        melee: weapon.melee,
       }
       this.snapshot.projectiles.push(projectile)
       this.projectileHits.set(projectile.id, new Set())
     }
     this.pushEvent('shot', player.x, player.y)
-    if (player.ammo === 0) this.startReload(player)
+    if (!weapon.infiniteAmmo && player.ammo === 0) this.startReload(player)
   }
 
   private startReload(player: PlayerState) {
@@ -688,7 +706,7 @@ export class GameEngine {
         if (distanceSquared(projectile.x, projectile.y, enemy.x, enemy.y) > Math.pow(projectile.radius + enemy.radius, 2)) continue
         hits.add(enemy.id)
         this.damageEnemy(enemy, projectile.damage, projectile.ownerId)
-        if (projectile.burn && enemy.health > 0) { enemy.burn = 2.5; enemy.burnOwner = projectile.ownerId }
+        if (projectile.burn && enemy.health > 0) { enemy.burn = projectile.burnDuration ?? 2.5; enemy.burnOwner = projectile.ownerId }
         const owner = this.snapshot.players.find((player) => player.id === projectile.ownerId)
         const frostRank = rank(owner, 'frostbite')
         enemy.slow = Math.max(enemy.slow, projectile.slowDuration ?? 0, frostRank > 0 ? 2 : 0)
@@ -731,7 +749,7 @@ export class GameEngine {
       if (enemy.health <= 0 || alreadyHit.has(enemy.id) || distanceSquared(x, y, enemy.x, enemy.y) > radius * radius) continue
       alreadyHit.add(enemy.id)
       this.damageEnemy(enemy, damage, projectile.ownerId)
-      if (projectile.burn && enemy.health > 0) { enemy.burn = 2.5; enemy.burnOwner = projectile.ownerId }
+      if (projectile.burn && enemy.health > 0) { enemy.burn = projectile.burnDuration ?? 2.5; enemy.burnOwner = projectile.ownerId }
       if ((projectile.slowDuration ?? 0) > 0) enemy.slow = Math.max(enemy.slow, projectile.slowDuration ?? 0)
     }
   }
@@ -739,7 +757,7 @@ export class GameEngine {
   private arcDamage(origin: EnemyState, projectile: ProjectileState, alreadyHit: Set<number>) {
     const owner = this.snapshot.players.find((player) => player.id === projectile.ownerId)
     const range = owner?.character === 'tempest' && owner.awakened ? 190 : 150
-    const retention = 0.52 + rank(owner, 'thunderhead') * 0.28 + (owner?.character === 'tempest' && owner.awakened ? 0.1 : 0)
+    const retention = 0.52 + rank(owner, 'thunderhead') * 0.28 + rank(owner, 'feedback-loop') * 0.25 + (owner?.character === 'tempest' && owner.awakened ? 0.1 : 0)
     const candidates = this.snapshot.enemies
       .filter((enemy) => enemy.health > 0 && !alreadyHit.has(enemy.id) && distanceSquared(origin.x, origin.y, enemy.x, enemy.y) < range * range)
       .sort((a, b) => distanceSquared(origin.x, origin.y, a.x, a.y) - distanceSquared(origin.x, origin.y, b.x, b.y))
@@ -766,6 +784,7 @@ export class GameEngine {
     if (owner) {
       owner.kills += 1
       if (owner.character === 'briar') this.heal(owner, owner.maxHealth * (0.006 + rank(owner, 'bloodbloom') * 0.012) * (owner.awakened ? 2 : 1))
+      if (owner.weapon === 'sword' && rank(owner, 'blood-edge') > 0) this.heal(owner, owner.maxHealth * 0.02)
       if (owner.character === 'nyx' && rank(owner, 'night-harvest') > 0 && owner.kills % 8 === 0) { this.heal(owner, 15); owner.hasteRemaining = 5 }
       if (owner.character === 'cinder' && rank(owner, 'phoenix-round') > 0 && owner.kills % 12 === 0) {
         this.heal(owner, 25)
@@ -900,17 +919,22 @@ export class GameEngine {
   }
 
   private createUpgradeChoices(player: PlayerState, excludedIds: ReadonlySet<string> = new Set()): string[] {
-    const available = (upgrade: (typeof UPGRADES)[number]) => rank(player, upgrade.id) < upgrade.maxLevel && !excludedIds.has(upgrade.id)
+    const swordIncompatible = new Set(['quick-hands', 'deep-mag', 'relentless'])
+    const available = (upgrade: (typeof UPGRADES)[number]) => rank(player, upgrade.id) < upgrade.maxLevel
+      && !excludedIds.has(upgrade.id) && !(player.weapon === 'sword' && swordIncompatible.has(upgrade.id))
     const signaturePool = UPGRADES.filter((upgrade) => upgrade.character === player.character && available(upgrade))
+    const weaponPool = UPGRADES.filter((upgrade) => upgrade.weapon === player.weapon && available(upgrade))
     const commonPool = UPGRADES.filter((upgrade) => upgrade.category === 'common' && available(upgrade))
-    const allPool = [...signaturePool, ...commonPool]
+    const allPool = [...signaturePool, ...weaponPool, ...commonPool]
     const choices: string[] = []
     const takeUnique = (pool: typeof UPGRADES) => {
       const candidates = pool.filter((candidate) => !choices.includes(candidate.id))
       if (candidates.length > 0) choices.push(this.random.pick(candidates).id)
     }
     takeUnique(signaturePool)
-    while (choices.length < 3 && choices.length < allPool.length) takeUnique(choices.length === 1 && commonPool.length > 0 ? commonPool : allPool)
+    takeUnique(weaponPool)
+    takeUnique(commonPool)
+    while (choices.length < 3 && choices.length < allPool.length) takeUnique(allPool)
     return choices
   }
 

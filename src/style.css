@@ -525,6 +525,8 @@ body::before {
 }
 .upgrade-card > span.upgrade-art { width: 96px; height: 96px; margin: 0 auto 24px; align-self: center; border: 0; border-radius: 50%; background-repeat: no-repeat; box-shadow: 0 12px 34px rgba(0,0,0,.48), 0 0 25px color-mix(in srgb, var(--accent) 12%, transparent); }
 .upgrade-card.signature { border-color: color-mix(in srgb, var(--accent) 62%, transparent); }
+.upgrade-card.weapon { border-color: color-mix(in srgb, var(--accent) 76%, transparent); background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 13%, #0a1612), #08110e); }
+.upgrade-card.weapon::before { opacity: .34; }
 .upgrade-card > span.upgrade-art.glyph-icon { color: var(--accent); background: radial-gradient(circle, color-mix(in srgb, var(--accent) 20%, #0a1612), #06100d 72%); border: 1px solid color-mix(in srgb, var(--accent) 46%, transparent); font-size: 40px; }
 .upgrade-card strong, .upgrade-card small, .upgrade-card em, .upgrade-card > b { position: relative; z-index: 1; }
 

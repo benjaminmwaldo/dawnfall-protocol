@@ -261,8 +261,14 @@ export class GameRenderer {
       context.shadowColor = projectile.color
       context.shadowBlur = projectile.enemy ? 9 : 13
       context.beginPath()
-      context.moveTo(x, y)
-      context.lineTo(x - projectile.vx * 0.035, y - projectile.vy * 0.035)
+      if (projectile.melee) {
+        const angle = Math.atan2(projectile.vy, projectile.vx)
+        context.lineWidth = Math.max(4, projectile.radius * 0.72)
+        context.arc(x, y, projectile.radius * 1.9, angle - 0.72, angle + 0.72)
+      } else {
+        context.moveTo(x, y)
+        context.lineTo(x - projectile.vx * 0.035, y - projectile.vy * 0.035)
+      }
       context.stroke()
     }
     context.shadowBlur = 0

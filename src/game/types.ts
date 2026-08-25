@@ -2,7 +2,7 @@ export type CharacterId = 'vesper' | 'cinder' | 'bastion' | 'warden' | 'nyx' | '
 export type WeaponId =
   | 'revolver' | 'scattergun' | 'arc-rifle'
   | 'burst-carbine' | 'railgun' | 'grenade-launcher'
-  | 'flamethrower' | 'frost-cannon' | 'seeker'
+  | 'flamethrower' | 'frost-cannon' | 'seeker' | 'sword'
 export type EnemyType =
   | 'thrall' | 'skitter' | 'spitter' | 'bulwark'
   | 'wraith' | 'charger' | 'hexer' | 'leech'
@@ -108,6 +108,8 @@ export interface ProjectileState {
   blastDamage?: number
   homing?: number
   slowDuration?: number
+  burnDuration?: number
+  melee?: boolean
 }
 
 export interface PickupState {
@@ -185,7 +187,8 @@ export interface UpgradeDefinition {
   maxLevel: number
   accent: string
   character?: CharacterId
-  category: 'common' | 'signature'
+  weapon?: WeaponId
+  category: 'common' | 'signature' | 'weapon'
 }
 
 export interface TeamBuffDefinition {

@@ -31,6 +31,7 @@ const WEAPON_ART: Record<PlayerConfig['weapon'], { file: string; columns: number
   flamethrower: { file: 'armory-atlas-v2.webp', columns: 3, rows: 2, index: 3 },
   'frost-cannon': { file: 'armory-atlas-v2.webp', columns: 3, rows: 2, index: 4 },
   seeker: { file: 'armory-atlas-v2.webp', columns: 3, rows: 2, index: 5 },
+  sword: { file: 'sword-dawncleaver.webp', columns: 1, rows: 1, index: 0 },
 }
 const atlasStyle = (file: string, columns: number, rows: number, index: number) => {
   const column = index % columns
@@ -273,7 +274,7 @@ class DawnfallApp {
               ${WEAPONS.map((weapon) => `
                 <button class="selection-card weapon-card ${this.localConfig.weapon === weapon.id ? 'selected' : ''}" data-weapon="${weapon.id}">
                   <span class="weapon-art" style="${weaponArtStyle(weapon.id)}"></span><span><strong>${weapon.name}</strong><em>${weapon.description}</em></span>
-                  <span class="weapon-stats"><b>${weapon.damage}</b><small>DMG</small><b>${weapon.magazine}</b><small>MAG</small></span>
+                  <span class="weapon-stats"><b>${weapon.damage}</b><small>DMG</small><b>${weapon.infiniteAmmo ? '∞' : weapon.magazine}</b><small>${weapon.infiniteAmmo ? 'AMMO' : 'MAG'}</small></span>
                 </button>`).join('')}
             </div>
           </section>
@@ -537,9 +538,10 @@ class DawnfallApp {
 
     const ammo = document.querySelector('#ammo-hud')
     if (ammo && hudPlayer) {
+      const weapon = weaponById(hudPlayer.weapon)
       const reloading = hudPlayer.reloadRemaining > 0
       const reloadProgress = reloading ? 1 - hudPlayer.reloadRemaining / hudPlayer.reloadDuration : 1
-      ammo.innerHTML = `<small>${localPlayer?.eliminated ? `${escapeHtml(hudPlayer.name.toUpperCase())} · ` : ''}${weaponById(hudPlayer.weapon).name.toUpperCase()}</small><strong>${reloading ? 'RELOAD' : `${hudPlayer.ammo} / ${hudPlayer.maxAmmo}`}</strong><i><em style="width:${reloadProgress * 100}%"></em></i>`
+      ammo.innerHTML = `<small>${localPlayer?.eliminated ? `${escapeHtml(hudPlayer.name.toUpperCase())} · ` : ''}${weapon.name.toUpperCase()}</small><strong>${weapon.infiniteAmmo ? '∞' : reloading ? 'RELOAD' : `${hudPlayer.ammo} / ${hudPlayer.maxAmmo}`}</strong><i><em style="width:${reloadProgress * 100}%"></em></i>`
     }
 
     const finaleBosses = snapshot.enemies.filter((enemy) => enemy.finale && enemy.health > 0)
@@ -609,7 +611,12 @@ class DawnfallApp {
           ${localOffer.ids.map((id) => {
             const upgrade = upgradeById(id)
             const nextRank = (localPlayer?.perks[id] ?? 0) + 1
-            return `<button class="upgrade-card ${upgrade.category}" data-upgrade="${id}" style="--accent:${upgrade.accent}" ${draftLocked ? 'disabled aria-disabled="true"' : ''}>${perkIconMarkup(id, 'upgrade-art')}<small>${upgrade.category === 'signature' ? `${characterById(upgrade.character!).name.toUpperCase()} SIGNATURE · ` : ''}${upgrade.maxLevel === 1 ? 'ONE-OF-ONE' : `RANK ${nextRank}/${upgrade.maxLevel}`}</small><strong>${upgrade.name}</strong><em>${upgrade.description}</em><b>${draftLocked ? 'READ BEFORE CHOOSING' : 'LOCK CHOICE →'}</b></button>`
+            const origin = upgrade.category === 'signature'
+              ? `${characterById(upgrade.character!).name.toUpperCase()} SIGNATURE`
+              : upgrade.category === 'weapon'
+                ? `${weaponById(upgrade.weapon!).name.toUpperCase()} ARMAMENT`
+                : 'COMMON POWER'
+            return `<button class="upgrade-card ${upgrade.category}" data-upgrade="${id}" style="--accent:${upgrade.accent}" ${draftLocked ? 'disabled aria-disabled="true"' : ''}>${perkIconMarkup(id, 'upgrade-art')}<small>${origin} · ${upgrade.maxLevel === 1 ? 'ONE-OF-ONE' : `RANK ${nextRank}/${upgrade.maxLevel}`}</small><strong>${upgrade.name}</strong><em>${upgrade.description}</em><b>${draftLocked ? 'READ BEFORE CHOOSING' : 'LOCK CHOICE →'}</b></button>`
           }).join('')}
         </div><div class="upgrade-actions"><button class="reroll-button" data-reroll ${localOffer.rerollsLeft > 0 && !draftLocked ? '' : 'disabled'}>↻ REROLL ALL THREE · ${localOffer.rerollsLeft} LEFT</button></div>` : `<div class="upgrade-waiting"><span class="waiting-pulse"></span><strong>${localOffer?.selectedId ? escapeHtml(upgradeById(localOffer.selectedId).name.toUpperCase()) : 'WAITING FOR ACTIVE HUNTERS'}</strong><small>${localOffer?.selectedId ? 'Your build is ready. The night resumes after the remaining choices.' : 'Spectating this squad draft.'}</small></div>`}
       </section>`
