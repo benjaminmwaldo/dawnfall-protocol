@@ -13,8 +13,8 @@ This is the cumulative implementation checklist for playtest feedback. New reque
 ## Hunters, weapons, and builds
 
 - [x] Nine distinct hunters with character-specific abilities, awakenings, perks, bodies, faces, portraits, and pixel sprites
-- [x] Add Rapunsel as a ninth adult hunter with very long brown hair, a slender cute silhouette, and a circular hair-slash ability
-- [x] Give every hunter an active ability on Space with a visible cooldown and consistent input behavior
+- [x] Add Rapsy as a ninth hunter with very long brown hair, a slender cute silhouette, and a circular hair-slash ability
+- [x] Give every hunter a shared active-ability control with a visible cooldown and consistent keyboard/touch input behavior
 - [x] Add tasteful COMING SOON hunter slots for future additions
 - [x] Keep Scarlet progressive but make her politics subtler and balanced with ordinary city life, being single, and occasional fights with her dad
 - [x] Ten distinct weapons, including Dawncleaver, plus weapon-specific perks
@@ -69,4 +69,19 @@ This is the cumulative implementation checklist for playtest feedback. New reque
 - [x] Replace awkward portrait-sized upgrade backgrounds with full-screen splash compositions and right-weighted character framing
 - [x] Replace chibi gameplay hunters with slimmer top-down pixel silhouettes closer to the enemy rendering language
 - [x] Replace overly detailed gameplay weapons with smaller, simpler pixel silhouettes that never cover the hunter
-- [x] Align Rapunsel's selection portrait with the gothic hunter-card art direction and consistently redesign all five splash scenes around the same petite adult English face and smaller-chested build
+- [x] Align Rapsy's selection portrait with the gothic hunter-card art direction and consistently redesign all five splash scenes around the same petite English identity
+
+## Work-notes expansion
+
+- [x] Rename Rapunsel to Rapsy everywhere visible and remove “adult” from her description
+- [x] Shift live combat to a projected three-quarter action-RPG view with an original stylized fantasy rendering language
+- [x] Give hunters readable idle, walking, aiming, recoil, hair, and ability motion instead of frozen in-game sprites
+- [x] Add mobile twin-stick gameplay: left stick moves, right stick aims and fires, plus accessible ability/interact buttons
+- [x] Add more fully playable hunters with distinct silhouettes, faces, backgrounds, abilities, signature perks, and personality facts
+- [x] Add selectable difficulty levels with clearly explained mechanical modifiers and synchronized multiplayer selection
+- [x] Replace “SPACE” wording on character-selection cards with device-neutral “SPECIAL” or “ABILITY” language
+- [x] Make the cast less visually homogeneous by grounding each hunter in a specific original face, build, age, cultural background, silhouette, and styling brief
+- [x] Build a reusable face-first character-design skill that produces six visual options, supports selection-led iterations, then repeats the loop for body design until approval
+- [x] Establish the world as a dystopian post-collapse apocalypse and weave lore into hunters, enemies, bosses, maps, and an explorable world-files interface
+- [x] Rename Warden and redesign her identity, presentation, and voice around a clearly Japanese heroine
+- [x] Make boss encounters more mechanically distinct with exposed weak points, readable warning zones, and damage telegraphs before major attacks

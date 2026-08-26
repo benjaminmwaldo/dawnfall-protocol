@@ -1,5 +1,30 @@
 import type { CharacterId } from './types'
 
+interface NewHunterFactProfile {
+  home: string
+  foods: readonly string[]
+  hobbies: readonly string[]
+  habits: readonly string[]
+  dreams: readonly string[]
+}
+
+const newHunterFacts = (profile: NewHunterFactProfile): readonly string[] => [
+  ...profile.foods.map((food) => `I would cross a ruined district for ${food}.`),
+  ...profile.hobbies.map((hobby) => `I lose track of time whenever I am ${hobby}.`),
+  ...profile.habits.map((habit) => `I ${habit}.`),
+  ...profile.dreams.map((dream) => `I still dream about ${dream}.`),
+  `I can recognize the weather in ${profile.home} by the color of the morning sky.`,
+  `I keep one coin from ${profile.home} sewn into my coat.`,
+  `I miss the sound of ordinary traffic in ${profile.home}.`,
+  `I know a shortcut through ${profile.home} that probably no longer exists.`,
+  `I learned my best swear word in ${profile.home}.`,
+  `I would rebuild one tiny café in ${profile.home} before any government office.`,
+  `I remember exactly how the rain smelled in ${profile.home}.`,
+  `I still call ${profile.home} home, even after everything.`,
+  `I keep a hand-drawn street map of ${profile.home} folded in my kit.`,
+  `I plan to see ${profile.home} lit safely at night again.`,
+]
+
 const RAW_PERSONALITY_FACTS: Record<CharacterId, readonly string[]> = {
   vesper: [
     'Vesper alphabetizes her tea collection by mood.',
@@ -419,7 +444,7 @@ const RAW_PERSONALITY_FACTS: Record<CharacterId, readonly string[]> = {
   ],
   rapunsel: [
     'I braid my hair differently whenever I need a fresh start.',
-    'I am an adult, but I still order the dessert with the tiny paper umbrella.',
+    'I still order the dessert with the tiny paper umbrella.',
     'I keep ribbon in every coat pocket just in case.',
     'I love strawberry milk and cinnamon toast.',
     'I can sit on my hair if I forget where I left the end of it.',
@@ -469,11 +494,33 @@ const RAW_PERSONALITY_FACTS: Record<CharacterId, readonly string[]> = {
     'I dream of a bright apartment with very high ceilings.',
     'I end difficult days by braiding one small flower into my hair.',
   ],
+  eira: newHunterFacts({
+    home: 'Reykjavík',
+    foods: ['hot rye bread with butter', 'lamb soup after a cold patrol', 'licorice chocolate', 'cardamom buns', 'skyr with cloudberries', 'waffles with too much jam', 'smoked trout', 'cinnamon coffee', 'salted caramel', 'a perfectly crisp apple'],
+    hobbies: ['repairing old weather instruments', 'swimming in geothermal pools', 'reading polar expedition journals', 'photographing storm fronts', 'knitting impractically warm socks', 'playing quiet piano pieces', 'carving tiny birds from driftwood', 'mapping aurora colors', 'training stubborn rescue dogs', 'collecting sea glass'],
+    habits: ['open every window when snow starts falling', 'count my breaths before difficult shots', 'carry hand warmers for people who insist they are fine', 'label every cable in my kit', 'sleep best beneath a heavy blanket', 'save the last clean mug for a guest', 'talk to cold machinery as if it can hear me', 'fold scarves with unreasonable precision', 'wake before alarms during a storm', 'keep my gloves clipped together like a child'],
+    dreams: ['a glass house beneath the northern lights', 'teaching children to skate on a safe lake', 'an archive where no one decides which history survives', 'a kitchen that is always too warm', 'adopting an enormous elderly dog', 'seeing the seed vault open for farmers again', 'a train line running all the way north', 'summer nights without sirens', 'making breakfast for the whole squad', 'hearing ordinary weather reports again'],
+  }),
+  mara: newHunterFacts({
+    home: 'Bucharest',
+    foods: ['plum dumplings dusted with sugar', 'strong coffee at midnight', 'warm cozonac', 'sour cherry pastries', 'mămăligă with cheese', 'roasted peppers', 'honey cake', 'street pretzels', 'blackberry ice cream', 'fried potatoes stolen from a friend’s plate'],
+    hobbies: ['restoring broken film cameras', 'learning dances from damaged recordings', 'playing backgammon too aggressively', 'hunting through flea markets', 'making silver earrings', 'watching terrible time-travel films', 'sketching Art Nouveau balconies', 'collecting expired train tickets', 'singing old pop songs off-key', 'solving locked-room mysteries'],
+    habits: ['wear two different earrings on purpose', 'check every clock even though none agree', 'hide sweets in equipment cases', 'laugh at the worst possible moment', 'remember faces better than names', 'take stairs two at a time', 'write tomorrow’s date when I am tired', 'keep a lipstick mirror inside my tool roll', 'leave voice notes instead of journals', 'flip a coin when both choices are bad'],
+    dreams: ['a crowded apartment dinner with every chair filled', 'returning stolen museum pieces to their walls', 'a city tram that arrives exactly on time', 'opening a cinema that only shows happy endings', 'owning six coats and no tactical harness', 'hearing my mother complain about my haircut', 'one completely uneventful birthday', 'teaching someone the dances I saved', 'destroying the machine that records tomorrow', 'waking without déjà vu'],
+  }),
+  zahra: newHunterFacts({
+    home: 'Beirut',
+    foods: ['warm manakish with za’atar', 'pistachio maamoul', 'lemony fattoush', 'strong cardamom coffee', 'cherries eaten over the sink', 'halloumi straight from the pan', 'rosewater ice cream', 'stuffed grape leaves', 'fresh figs', 'garlic potatoes with too much garlic'],
+    hobbies: ['drawing orbital diagrams in café notebooks', 'dancing dabke at crowded weddings', 'polishing brass instruments', 'reading astronomy books aloud', 'collecting perfume bottles', 'swimming before sunrise', 'repairing mechanical watches', 'photographing old balconies', 'growing jasmine from cuttings', 'playing chess with patient people'],
+    habits: ['tap every doorframe twice for luck', 'wear gold hoops even during field repairs', 'measure rooms by counting my steps', 'save pretty glass jars for no practical reason', 'carry coffee in a dangerously small cup', 'hum when equations finally balance', 'keep my nails painted deep red', 'answer difficult questions with another question', 'braid one curl behind my left ear when concentrating', 'bring fruit whenever I visit someone'],
+    dreams: ['jasmine climbing over an intact balcony', 'rebuilding the public observatory', 'a seaside wedding with far too many cousins', 'watching the orbital elevator rise again without weapons', 'teaching gravity to lift rubble instead of crush cities', 'a library open late enough for insomniacs', 'hearing music from every apartment window', 'taking the squad dancing', 'one summer with a stable electrical grid', 'seeing the Mediterranean without ash'],
+  }),
 }
 
 const CHARACTER_NAMES: Record<CharacterId, string> = {
   vesper: 'Vesper', cinder: 'Scarlet', bastion: 'Bastion', warden: 'Warden', nyx: 'Nyx',
-  tempest: 'Tempest', briar: 'Briar', seraph: 'Seraph', rapunsel: 'Rapunsel',
+  tempest: 'Tempest', briar: 'Briar', seraph: 'Seraph', rapunsel: 'Rapsy',
+  eira: 'Eira', mara: 'Mara', zahra: 'Zahra',
 }
 
 const FIRST_PERSON_ADVERBS = new Set(['always', 'never', 'secretly', 'deeply', 'quietly', 'usually', 'really', 'once', 'also', 'just'])

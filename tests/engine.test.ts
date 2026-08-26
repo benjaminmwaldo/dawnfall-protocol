@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { CHARACTERS, UPGRADES, WEAPONS } from '../src/game/data'
+import { bossWarningStrength, bossWeakPointIsOpen } from '../src/game/boss'
+import { DIFFICULTIES } from '../src/game/difficulty'
 import { GameEngine } from '../src/game/engine'
 import { HALF_HEART_VALUE, HEAL_CRYSTAL_SECONDS, HEART_REGEN_SECONDS, HEART_VALUE } from '../src/game/health'
 import { MAPS, mapById } from '../src/game/maps'
 import { PERSONALITY_FACTS } from '../src/game/personality'
 import { uprightSpriteTransform } from '../src/game/renderer'
-import type { InputState, PlayerConfig } from '../src/game/types'
+import type { EnemyState, InputState, PlayerConfig } from '../src/game/types'
 
 const player: PlayerConfig = {
   id: 'test-player', name: 'Tester', character: 'vesper', weapon: 'revolver', color: '#f2d479',
@@ -16,6 +18,33 @@ const clearDraftInputDelay = (engine: GameEngine, inputs: ReadonlyMap<string, In
 }
 
 describe('GameEngine', () => {
+  it('supports four distinct synchronized threat levels', () => {
+    expect(DIFFICULTIES.map((difficulty) => difficulty.id)).toEqual(['story', 'standard', 'nightmare', 'apocalypse'])
+    const story = new GameEngine([player], 240, 88, 'gloamreach', 'story')
+    const apocalypse = new GameEngine([player], 240, 88, 'gloamreach', 'apocalypse')
+    for (let tick = 0; tick < 7; tick += 1) { story.step(0.05, new Map([[player.id, idle]])); apocalypse.step(0.05, new Map([[player.id, idle]])) }
+    expect(story.snapshot.difficulty).toBe('story')
+    expect(apocalypse.snapshot.difficulty).toBe('apocalypse')
+    expect(apocalypse.snapshot.enemies[0].maxHealth).toBeGreaterThan(story.snapshot.enemies[0].maxHealth)
+    expect(apocalypse.snapshot.enemies.length).toBeGreaterThanOrEqual(story.snapshot.enemies.length)
+  })
+
+  it('preserves partial analog movement for a mobile stick', () => {
+    const engine = new GameEngine([player], 240, 89)
+    engine.step(0.05, new Map([[player.id, { ...idle, moveX: 0.5, moveY: 0 }]]))
+    expect(engine.snapshot.players[0].vx).toBeCloseTo(88)
+    expect(engine.snapshot.players[0].vy).toBe(0)
+  })
+
+  it('opens boss weak points during readable pre-attack warnings', () => {
+    const boss: EnemyState = { id: 7, type: 'graveknight', x: 0, y: 0, vx: 0, vy: 0, health: 100, maxHealth: 100, radius: 60, speed: 30, damage: 25, attackCooldown: 2, burn: 0, burnTick: 0.5, slow: 0, phase: 1, abilityCooldown: 0.7 }
+    expect(bossWeakPointIsOpen(boss)).toBe(true)
+    expect(bossWarningStrength(boss)).toBeGreaterThan(0)
+    boss.abilityCooldown = 2
+    expect(bossWeakPointIsOpen(boss)).toBe(false)
+    expect(bossWarningStrength(boss)).toBe(0)
+  })
+
   it('keeps every rare upgrade one-of-one with five signatures per hunter and two perks per armament', () => {
     expect(UPGRADES.every((upgrade) => upgrade.maxLevel === 1)).toBe(true)
     for (const character of CHARACTERS) {
@@ -319,7 +348,7 @@ describe('GameEngine', () => {
     expect(hunter.health).toBe(HEART_VALUE * 5)
   })
 
-  it('fires Rapunsel’s circular hair slash from the shared Space input', () => {
+  it('fires Rapsy’s circular hair slash from the shared ability input', () => {
     const engine = new GameEngine([{ ...player, character: 'rapunsel' }], 240, 1_207)
     const hunter = engine.snapshot.players[0]
     engine.snapshot.enemies.push({

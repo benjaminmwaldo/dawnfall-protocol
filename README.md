@@ -4,8 +4,8 @@ An original 1–4 player browser survival roguelite prototype inspired by the ac
 
 ## Playtest loop
 
-- Move with WASD, aim/fire with the mouse, and trigger every hunter’s unique active ability with Space.
-- Choose one of nine hunters, ten weapons, and three battlefields—or randomize any of them.
+- Move with WASD and mouse on desktop, or two analog sticks on mobile; every hunter shares one ability control.
+- Choose one of twelve hunters, ten weapons, four difficulty levels, and three battlefields—or randomize the loadout and map.
 - Fill one shared squad XP track, then let every active hunter choose simultaneously from three personal upgrades with three rerolls.
 - Shape individual builds from 24 one-rank common transformations plus five signature upgrades for every hunter, including a unique combat companion.
 - Revive downed teammates with E during a generous twenty-four-second rescue window; multiple rescuers combine their effort. Solo hunters and the last surviving hunter skip unwinnable bleedout waits.
@@ -15,12 +15,12 @@ An original 1–4 player browser survival roguelite prototype inspired by the ac
 - Read damage in half-heart units: every hunter begins with five hearts, Bastion begins with a sixth, and maximum-heart upgrades expand each personal build.
 - Regenerate one heart every minute or collect a one-heart crystal that forms at each healing structure on its own visible sixty-second charge ring.
 - In the Reliquary, players, enemies, companions, and projectiles collide with solid walls while monsters navigate through room doors.
-- Fight eight regular enemy archetypes and eight dynamic bosses; seven arrive before the empowered final trio, and every boss grants a squad-wide relic while ordinary upgrades stay personal.
+- Fight eight regular enemy archetypes and eight dynamic bosses with telegraphed attacks and exposed weak points; seven arrive before the empowered final trio, and every boss grants a squad-wide relic while ordinary upgrades stay personal.
 - Select a compressed four-minute field test or the intended twenty-minute run.
 
 ## Art direction
 
-The interface uses original painterly dark-fantasy illustration, while the battlefield deliberately switches to crisp, limited-palette pixel art so static sprites remain readable in motion. Characters, creatures, bosses, and interactive structures share hard-edged runtime atlases. Every moving model uses a centered sprite authored facing east—the canvas angle-zero direction. Right-facing angles rotate normally; left-facing angles fold back into an upright range and mirror the sprite, keeping every model right-side-up without breaking its aim vector. Lightweight bob, stride, and recoil transforms add motion without requiring large animation sheets. The production-ready WebP atlases live in `public/art`; shared colors and silhouettes keep the illustrated menus and pixel-art combat grounded in one world.
+The interface uses original painterly dark-fantasy illustration, while combat uses a projected three-quarter action-RPG view. Hunters are compact, code-authored models with unique proportions, hair masses, costumes, walking strides, idle breathing, recoil, ability motion, and upright aim-facing; enemies retain harder-edged atlas art so a crowded field remains readable. The production-ready WebP art lives in `public/art`, with full generated originals preserved in `art-source`.
 
 Every upgrade draft also reveals one of five alternate-life character scenes and one of fifty stable first-person personality details for the chosen hunter. Full-resolution landscape backdrops fill the screen behind translucent choices, and a corner control hides the draft UI for an unobstructed splash-art view while keeping the character detail readable.
 

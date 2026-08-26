@@ -1,4 +1,6 @@
-export type CharacterId = 'vesper' | 'cinder' | 'bastion' | 'warden' | 'nyx' | 'tempest' | 'briar' | 'seraph' | 'rapunsel'
+export type CharacterId =
+  | 'vesper' | 'cinder' | 'bastion' | 'warden' | 'nyx' | 'tempest'
+  | 'briar' | 'seraph' | 'rapunsel' | 'eira' | 'mara' | 'zahra'
 export type WeaponId =
   | 'revolver' | 'scattergun' | 'arc-rifle'
   | 'burst-carbine' | 'railgun' | 'grenade-launcher'
@@ -13,6 +15,7 @@ export type CompanionKind = 'gravewing' | 'ashkit' | 'aegis-hound' | 'mercy-moth
 export type GamePhase = 'playing' | 'upgrade' | 'victory' | 'defeat'
 export type MapId = 'gloamreach' | 'emberfall' | 'reliquary'
 export type MapChoice = MapId | 'random'
+export type DifficultyId = 'story' | 'standard' | 'nightmare' | 'apocalypse'
 export type StructureEffect = 'heal' | 'turret' | 'haste'
 export type StructureType =
   | 'moonwell' | 'ward-tower' | 'ritual-stone'
@@ -36,6 +39,8 @@ export interface InputState {
   interact: boolean
   special: boolean
   aim: number
+  moveX?: number
+  moveY?: number
   viewportWidth?: number
   viewportHeight?: number
 }
@@ -191,6 +196,7 @@ export interface PlayerUpgradeOffer {
 export interface GameSnapshot {
   seed: number
   mapId: MapId
+  difficulty: DifficultyId
   phase: GamePhase
   timeRemaining: number
   duration: number

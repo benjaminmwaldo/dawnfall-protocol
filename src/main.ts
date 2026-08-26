@@ -1,11 +1,12 @@
 import './style.css'
 import { BOSS_NAMES, CHARACTERS, PLAYER_COLORS, UPGRADES, WEAPONS, characterById, isBoss, teamBuffById, upgradeById, weaponById } from './game/data'
 import { GameEngine } from './game/engine'
+import { DIFFICULTIES, difficultyById } from './game/difficulty'
 import { HEART_REGEN_SECONDS, HEART_VALUE, heartFill, heartSlots } from './game/health'
 import { MAPS, mapById } from './game/maps'
 import { personalityFact } from './game/personality'
 import { GameRenderer } from './game/renderer'
-import type { BossType, GameSnapshot, InputState, MapChoice, MapId, PlayerConfig } from './game/types'
+import type { BossType, DifficultyId, GameSnapshot, InputState, MapChoice, MapId, PlayerConfig } from './game/types'
 import { MultiplayerSession } from './network'
 
 type Screen = 'home' | 'lobby' | 'game' | 'recap'
@@ -22,7 +23,8 @@ const formatTime = (seconds: number) => {
 }
 const FINAL_TRIO_TYPES: BossType[] = ['broodmother', 'graveknight', 'eclipse-eye']
 const ART_BASE = `${import.meta.env.BASE_URL}art/`
-const CHARACTER_ART_INDEX: Record<Exclude<PlayerConfig['character'], 'rapunsel'>, number> = { vesper: 0, cinder: 1, bastion: 2, warden: 3, nyx: 4, tempest: 5, briar: 6, seraph: 7 }
+const CHARACTER_ART_INDEX: Partial<Record<PlayerConfig['character'], number>> = { vesper: 0, cinder: 1, bastion: 2, nyx: 4, tempest: 5, briar: 6, seraph: 7 }
+const CHARACTER_PORTRAITS: Partial<Record<PlayerConfig['character'], string>> = { warden: 'aiko-portrait.webp', rapunsel: 'rapunsel-portrait.webp', eira: 'eira-portrait.webp', mara: 'mara-portrait.webp', zahra: 'zahra-portrait.webp' }
 const COMPANION_ART_INDEX: Partial<Record<string, number>> = { gravewing: 0, ashkit: 1, 'aegis-hound': 2, 'mercy-moth': 3, shadecat: 4, 'storm-wisp': 5, thornling: 6, sunbird: 7 }
 const WEAPON_ART: Record<PlayerConfig['weapon'], { file: string; columns: number; rows: number; index: number }> = {
   revolver: { file: 'armory-atlas.webp', columns: 3, rows: 2, index: 0 },
@@ -43,9 +45,9 @@ const atlasStyle = (file: string, columns: number, rows: number, index: number) 
   const y = rows === 1 ? 0 : (row / (rows - 1)) * 100
   return `background-image:url('${ART_BASE}${file}');background-size:${columns * 100}% ${rows * 100}%;background-position:${x}% ${y}%;`
 }
-const portraitStyle = (character: PlayerConfig['character']) => character === 'rapunsel'
-  ? `background-image:url('${ART_BASE}rapunsel-portrait.webp');background-size:cover;background-position:center;`
-  : atlasStyle('hunter-portraits-v3.webp', 4, 2, CHARACTER_ART_INDEX[character])
+const portraitStyle = (character: PlayerConfig['character']) => CHARACTER_PORTRAITS[character]
+  ? `background-image:url('${ART_BASE}${CHARACTER_PORTRAITS[character]}');background-size:cover;background-position:center;`
+  : atlasStyle('hunter-portraits-v3.webp', 4, 2, CHARACTER_ART_INDEX[character] ?? 0)
 const mapArtStyle = (mapId: MapId) => atlasStyle('biome-textures-v1.webp', 2, 2, mapById(mapId).textureIndex)
 const stableHash = (key: string): number => {
   let hash = 2166136261
@@ -58,6 +60,8 @@ const stableHash = (key: string): number => {
 const stableArtVariant = (key: string): number => (stableHash(key) % 5) + 1
 const upgradeSceneStyle = (character: PlayerConfig['character'], variant: number) => character === 'rapunsel'
   ? `--splash-art:url('${ART_BASE}upgrade-rapunsel-${variant}.webp');--portrait-art:none;`
+  : CHARACTER_PORTRAITS[character]
+    ? `--splash-art:url('${ART_BASE}upgrade-backdrop-${variant}.webp');--portrait-art:url('${ART_BASE}${CHARACTER_PORTRAITS[character]}');`
   : `--splash-art:url('${ART_BASE}upgrade-backdrop-${variant}.webp');--portrait-art:url('${ART_BASE}upgrade-${character}-${variant}.webp');`
 const recapSceneStyle = (won: boolean, variant: number) => `background-image:url('${ART_BASE}recap-${won ? 'victory' : 'defeat'}-${variant}.webp');`
 const weaponArtStyle = (weapon: PlayerConfig['weapon']) => {
@@ -125,6 +129,7 @@ class DawnfallApp {
   private screen: Screen = 'home'
   private mode: SessionMode = 'solo'
   private duration = 240
+  private difficulty: DifficultyId = 'standard'
   private mapChoice: MapChoice = 'gloamreach'
   private party: PlayerConfig[] = []
   private localConfig: PlayerConfig
@@ -161,7 +166,7 @@ class DawnfallApp {
         this.party = players
         if (this.screen === 'lobby') this.renderLobby()
       },
-      onStart: (configs, duration, seed, mapId) => this.beginGuestGame(configs, duration, seed, mapId),
+      onStart: (configs, duration, seed, mapId, difficulty) => this.beginGuestGame(configs, duration, seed, mapId, difficulty),
       onSnapshot: (snapshot) => {
         this.snapshot = snapshot
         this.lastSnapshotAt = performance.now()
@@ -185,14 +190,14 @@ class DawnfallApp {
       <main class="landing-shell">
         <header class="topbar">
           <a class="wordmark" href="./" aria-label="Dawnfall Protocol home"><span class="sigil">◈</span> DAWNFALL <i>PROTOCOL</i></a>
-          <button class="text-button" id="about-button">DESIGN NOTES</button>
+          <button class="text-button" id="about-button">WORLD FILES</button>
         </header>
         <section class="hero-grid">
           <div class="hero-art-flare" aria-hidden="true"></div>
           <div class="hero-copy">
             <p class="eyebrow">1–4 PLAYER CO-OP SURVIVAL ROGUELITE</p>
             <h1>HOLD THE LINE<br><em>UNTIL DAWN.</em></h1>
-            <p class="hero-lede">Aim every shot. Shape your hunter. Survive one impossible night together.</p>
+            <p class="hero-lede">The sun failed eleven years ago. Aim every shot, shape your hunter, and cross the dead cities before the Black Signal finishes what the Collapse began.</p>
             <div class="run-readout" aria-label="Twenty minute run timeline">
               <span>20:00</span><div><i></i><i></i><i></i></div><strong>00:00</strong>
             </div>
@@ -218,14 +223,18 @@ class DawnfallApp {
           <article><b>02</b><span>RARE POWER SPIKES</span><p>Squad levels arrive less often, but every perk can transform a hunter's build.</p></article>
           <article><b>03</b><span>BOSS RELICS</span><p>Slay eight night lords to earn the only powers shared by the entire squad.</p></article>
         </section>
-        <footer class="landing-footer"><span>ORIGINAL BROWSER PROTOTYPE · DESKTOP RECOMMENDED</span><span>NOT AFFILIATED WITH 20 MINUTES TILL DAWN</span></footer>
+        <footer class="landing-footer"><span>ORIGINAL BROWSER PROTOTYPE · DESKTOP + MOBILE</span><span>THE ARCHIVE CALLS THIS YEAR 11 A.D. · AFTER DAWN</span></footer>
       </main>
       <dialog id="design-dialog" class="design-dialog">
         <button class="dialog-close" aria-label="Close design notes">×</button>
-        <p class="eyebrow">DESIGN DNA</p>
-        <h2>What came from the research</h2>
-        <p><em>20 Minutes Till Dawn</em> stands apart from passive survivor-likes through directional aiming, active firing, magazines, reloads, character–weapon pairing, upgrade trees, and boss-granted power spikes.</p>
-        <p>Dawnfall keeps that active tension while giving the squad one shared XP track. Rarer levels pause the night for simultaneous personal drafts: three one-of-one choices and three rerolls for every active hunter. Character companions and signature powers create distinct personal builds; boss relics remain the rare squad-wide power spike. Three original battlefields change the structures, terrain, sightlines, and navigation—including a solid-walled nine-room dungeon. Hunters carry readable heart-based vitality, recover one heart each minute, and can contest timed heart crystals at healing structures.</p>
+        <p class="eyebrow">RECOVERED ARCHIVE · YEAR 11 A.D.</p>
+        <h2>The world after dawn</h2>
+        <div class="world-files">
+          <article><b>01 · THE COLLAPSE</b><p>At 04:13 UTC, every artificial light flashed violet and the sun rose black. Cities became signal nests; the countryside filled with bodies remade by broadcast static. Survivors now call that transmission the Black Signal.</p></article>
+          <article><b>02 · THE HUNTERS</b><p>The Protocol recruits people whose nervous systems can resist the Signal. Every ability is a scar left by survival: Aiko's lantern contains a shrine-network shard, Rapsy's living hair changed beneath a gene-clinic tower, and Zahra hears gravity bend around infected machines.</p></article>
+          <article><b>03 · THE MONSTERS</b><p>Thralls are sleepers caught in a single command. Skitters grew inside transit tunnels. Hexers are broken emergency AIs wearing human silhouettes. Bosses are regional Signal relays—kill the exposed core and the local horde loses its god.</p></article>
+          <article><b>04 · THE FIELDS</b><p>Gloamreach is a drowned evacuation belt, Emberfall is a refinery city that never stopped burning, and the Reliquary is a sealed civil-defense dungeon whose rooms still move when the alarms sing.</p></article>
+        </div>
         <div class="dialog-rule"></div>
         <p class="small-copy">This prototype uses original names, code, balancing, visual language, characters, enemies, abilities, and hand-directed generated artwork.</p>
       </dialog>
@@ -294,9 +303,9 @@ class DawnfallApp {
                 <button class="selection-card character-card ${this.localConfig.character === character.id ? 'selected' : ''}" data-character="${character.id}" style="--accent:${character.color}">
                   <span class="portrait-art" style="${portraitStyle(character.id)}"></span>
                   <span class="portrait-sigil">${character.glyph}</span>
-                  <span class="card-copy"><small>${character.epithet}</small><strong>${character.name}</strong><em>${character.description}</em><b>${character.baseAbility}</b><i><kbd>SPACE</kbd> ${character.activeAbility}</i></span>
+                  <span class="card-copy"><small>${character.epithet}</small><strong>${character.name}</strong><em>${character.description}</em><span class="identity-note">${character.origin} · ${character.build}</span><b>${character.baseAbility}</b><i><kbd>ABILITY</kbd> ${character.activeAbility}</i></span>
                 </button>`).join('')}
-              ${Array.from({ length: 3 }, (_, index) => `<article class="selection-card character-card coming-soon" aria-label="Future hunter slot"><span class="future-mark">0${CHARACTERS.length + index + 1}</span><span class="card-copy"><small>THE ROSTER GROWS</small><strong>COMING SOON</strong><em>A new hunter is waiting beyond the dawn.</em></span></article>`).join('')}
+              ${Array.from({ length: 2 }, (_, index) => `<article class="selection-card character-card coming-soon" aria-label="Future hunter slot"><span class="future-mark">0${CHARACTERS.length + index + 1}</span><span class="card-copy"><small>THE ROSTER GROWS</small><strong>COMING SOON</strong><em>Another survivor is broadcasting from beyond the exclusion line.</em></span></article>`).join('')}
             </div>
             <div class="section-heading compact"><span>02</span><div><h2>CHOOSE YOUR WEAPON</h2><p>Every hunter can carry every weapon.</p></div><button class="random-loadout-button" data-random-weapon data-testid="random-weapon">⌁ RANDOM WEAPON</button></div>
             <div class="weapon-grid">
@@ -328,6 +337,10 @@ class DawnfallApp {
               ${Array.from({ length: Math.max(0, 4 - this.party.length) }, (_, index) => `<article class="party-member empty"><span class="party-number">0${this.party.length + index + 1}</span><span class="party-avatar">·</span><div><strong>OPEN SLOT</strong><small>Waiting in the dark</small></div></article>`).join('')}
             </div>
             ${canStart ? `
+              <div class="difficulty-picker">
+                <div class="aside-label">THREAT LEVEL</div>
+                ${DIFFICULTIES.map((difficulty) => `<button class="difficulty-option ${this.difficulty === difficulty.id ? 'selected' : ''}" data-difficulty="${difficulty.id}" style="--difficulty:${difficulty.accent}"><span>${difficulty.name}</span><small>${difficulty.description}</small></button>`).join('')}
+              </div>
               <div class="duration-picker">
                 <div class="aside-label">NIGHT LENGTH</div>
                 <button class="duration-option ${this.duration === 240 ? 'selected' : ''}" data-duration="240"><span>FIELD TEST</span><b>04:00</b><small>All milestones compressed</small></button>
@@ -377,6 +390,10 @@ class DawnfallApp {
       this.duration = Number(button.dataset.duration)
       this.renderLobby()
     }))
+    document.querySelectorAll<HTMLElement>('[data-difficulty]').forEach((button) => button.addEventListener('click', () => {
+      this.difficulty = button.dataset.difficulty as DifficultyId
+      this.renderLobby()
+    }))
     document.querySelector('#copy-link-button')?.addEventListener('click', async (event) => {
       const button = event.currentTarget as HTMLButtonElement
       try { await navigator.clipboard.writeText(button.dataset.url ?? ''); button.textContent = 'INVITE COPIED' }
@@ -386,8 +403,8 @@ class DawnfallApp {
       this.audio.unlock()
       const seed = Date.now() % 2_147_483_647
       const mapId = this.mapChoice === 'random' ? MAPS[Math.floor(Math.random() * MAPS.length)].id : this.mapChoice
-      if (this.mode === 'host') this.network.startGame(this.duration, seed, mapId)
-      this.beginHostGame(this.party, this.duration, seed, mapId)
+      if (this.mode === 'host') this.network.startGame(this.duration, seed, mapId, this.difficulty)
+      this.beginHostGame(this.party, this.duration, seed, mapId, this.difficulty)
     })
   }
 
@@ -397,17 +414,17 @@ class DawnfallApp {
     else this.renderLobby()
   }
 
-  private beginHostGame(configs: PlayerConfig[], duration: number, seed: number, mapId: MapId) {
-    this.engine = new GameEngine(configs, duration, seed, mapId)
+  private beginHostGame(configs: PlayerConfig[], duration: number, seed: number, mapId: MapId, difficulty: DifficultyId) {
+    this.engine = new GameEngine(configs, duration, seed, mapId, difficulty)
     this.snapshot = this.engine.snapshot
     this.inputs.clear()
     this.inputs.set(this.localConfig.id, this.localInput)
     this.renderGame()
   }
 
-  private beginGuestGame(configs: PlayerConfig[], duration: number, seed: number, mapId: MapId) {
+  private beginGuestGame(configs: PlayerConfig[], duration: number, seed: number, mapId: MapId, difficulty: DifficultyId) {
     this.engine = undefined
-    this.snapshot = new GameEngine(configs, duration, seed, mapId).snapshot
+    this.snapshot = new GameEngine(configs, duration, seed, mapId, difficulty).snapshot
     this.lastSnapshotAt = performance.now()
     this.renderGame()
   }
@@ -426,7 +443,7 @@ class DawnfallApp {
           <div class="hud-top-left"><span class="hud-brand">◈ DAWNFALL</span><div id="level-readout">LV. 01</div></div>
           <div class="timer-block"><small id="timer-label">UNTIL DAWN</small><strong id="timer-readout">${formatTime(this.snapshot?.timeRemaining ?? this.duration)}</strong><div class="xp-track"><i id="xp-fill"></i></div></div>
           <button class="mute-button" id="mute-button" aria-label="Toggle sound">SOUND ON</button>
-          <div class="map-hud" id="map-hud"><small>${activeMap.epithet}</small><strong>${activeMap.name}</strong></div>
+          <div class="map-hud" id="map-hud"><small>${difficultyById(this.snapshot?.difficulty ?? this.difficulty).name} · ${activeMap.epithet}</small><strong>${activeMap.name}</strong></div>
           <div class="team-hud" id="team-hud"></div>
           <div class="team-buffs-hud" id="team-buffs-hud"></div>
           <div class="perks-hud" id="perks-hud"></div>
@@ -438,6 +455,12 @@ class DawnfallApp {
             <button id="spectate-prev" aria-label="Watch previous ally">‹</button>
             <div><small>YOU FELL · WATCHING</small><strong id="spectator-name">ALLY</strong><span>Q / E TO CYCLE</span></div>
             <button id="spectate-next" aria-label="Watch next ally">›</button>
+          </div>
+          <div class="touch-controls" aria-label="Mobile twin-stick controls">
+            <div class="touch-stick move-stick" data-touch-stick="move"><span></span><b>MOVE</b></div>
+            <div class="touch-stick aim-stick" data-touch-stick="aim"><span></span><b>AIM · FIRE</b></div>
+            <button class="touch-action touch-ability" id="touch-ability">ABILITY</button>
+            <button class="touch-action touch-interact" id="touch-interact">HELP</button>
           </div>
           <div class="upgrade-overlay" id="upgrade-overlay"></div>
         </section>
@@ -471,9 +494,9 @@ class DawnfallApp {
     }
     window.onkeydown = (event) => setKey(event, true)
     window.onkeyup = (event) => setKey(event, false)
-    canvas.addEventListener('pointermove', (event) => { this.localInput.aim = this.renderer?.aimFromPointer(event.clientX, event.clientY) ?? 0 })
-    canvas.addEventListener('pointerdown', (event) => { if (event.button === 0) { this.audio.unlock(); this.localInput.firing = true } })
-    window.onpointerup = () => { this.localInput.firing = false }
+    canvas.addEventListener('pointermove', (event) => { if (event.pointerType !== 'touch') this.localInput.aim = this.renderer?.aimFromPointer(event.clientX, event.clientY) ?? 0 })
+    canvas.addEventListener('pointerdown', (event) => { if (event.pointerType !== 'touch' && event.button === 0) { this.audio.unlock(); this.localInput.firing = true } })
+    window.onpointerup = (event) => { if (event.pointerType !== 'touch') this.localInput.firing = false }
     canvas.addEventListener('contextmenu', (event) => event.preventDefault())
     window.onresize = () => this.renderer?.resize()
     document.querySelector('#mute-button')?.addEventListener('click', (event) => {
@@ -482,6 +505,43 @@ class DawnfallApp {
     })
     document.querySelector('#spectate-prev')?.addEventListener('click', () => this.cycleSpectator(-1))
     document.querySelector('#spectate-next')?.addEventListener('click', () => this.cycleSpectator(1))
+    const bindStick = (element: HTMLElement, kind: 'move' | 'aim') => {
+      let pointerId: number | undefined
+      const nub = element.querySelector<HTMLElement>('span')
+      const update = (event: PointerEvent) => {
+        if (pointerId !== event.pointerId) return
+        const bounds = element.getBoundingClientRect()
+        const dx = event.clientX - bounds.left - bounds.width / 2
+        const dy = event.clientY - bounds.top - bounds.height / 2
+        const radius = bounds.width * 0.36
+        const magnitude = Math.hypot(dx, dy)
+        const scale = magnitude > radius ? radius / magnitude : 1
+        const x = dx * scale
+        const y = dy * scale
+        if (nub) nub.style.transform = `translate(${x}px, ${y}px)`
+        if (kind === 'move') { this.localInput.moveX = x / radius; this.localInput.moveY = y / radius }
+        else { this.localInput.aim = this.renderer?.aimFromVector(x, y) ?? 0; this.localInput.firing = magnitude > radius * 0.18 }
+      }
+      const release = (event: PointerEvent) => {
+        if (pointerId !== event.pointerId) return
+        pointerId = undefined
+        if (nub) nub.style.transform = 'translate(0, 0)'
+        if (kind === 'move') { this.localInput.moveX = undefined; this.localInput.moveY = undefined }
+        else this.localInput.firing = false
+      }
+      element.addEventListener('pointerdown', (event) => { event.preventDefault(); this.audio.unlock(); pointerId = event.pointerId; element.setPointerCapture(event.pointerId); update(event) })
+      element.addEventListener('pointermove', update)
+      element.addEventListener('pointerup', release)
+      element.addEventListener('pointercancel', release)
+    }
+    document.querySelectorAll<HTMLElement>('[data-touch-stick]').forEach((element) => bindStick(element, element.dataset.touchStick as 'move' | 'aim'))
+    const bindAction = (selector: string, key: 'special' | 'interact') => {
+      const button = document.querySelector<HTMLElement>(selector)
+      button?.addEventListener('pointerdown', (event) => { event.preventDefault(); this.localInput[key] = true })
+      for (const type of ['pointerup', 'pointercancel', 'pointerleave'] as const) button?.addEventListener(type, () => { this.localInput[key] = false })
+    }
+    bindAction('#touch-ability', 'special')
+    bindAction('#touch-interact', 'interact')
   }
 
   private gameLoop(time: number) {
@@ -534,6 +594,7 @@ class DawnfallApp {
     if (next.up !== previous.up || next.down !== previous.down || next.left !== previous.left || next.right !== previous.right
       || next.firing !== previous.firing || next.interact !== previous.interact || next.special !== previous.special) return true
     if (next.viewportWidth !== previous.viewportWidth || next.viewportHeight !== previous.viewportHeight) return true
+    if (Math.abs((next.moveX ?? 0) - (previous.moveX ?? 0)) > 0.02 || Math.abs((next.moveY ?? 0) - (previous.moveY ?? 0)) > 0.02) return true
     const aimDifference = Math.abs(Math.atan2(Math.sin(next.aim - previous.aim), Math.cos(next.aim - previous.aim)))
     return aimDifference > 0.015
   }

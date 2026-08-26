@@ -59,7 +59,7 @@ export const MAPS: readonly MapDefinition[] = [
     id: 'gloamreach',
     name: 'Gloamreach Moor',
     epithet: 'THE OPEN NIGHT',
-    description: 'Wide moonlit ground, long sightlines, and dependable sanctuaries.',
+    description: 'A drowned evacuation belt where the Black Signal still speaks through abandoned flood sirens.',
     accent: '#74d8c2',
     textureIndex: 0,
     bounds: { minX: -1500, maxX: 1500, minY: -1500, maxY: 1500 },
@@ -75,7 +75,7 @@ export const MAPS: readonly MapDefinition[] = [
     id: 'emberfall',
     name: 'Emberfall Ruins',
     epithet: 'THE BURNING WASTE',
-    description: 'Open volcanic ruins with violent sightlines and aggressive fire relics.',
+    description: 'A refinery city that never stopped burning after its automated defense grid locked the workers inside.',
     accent: '#ff795d',
     textureIndex: 1,
     bounds: { minX: -1500, maxX: 1500, minY: -1500, maxY: 1500 },
@@ -91,7 +91,7 @@ export const MAPS: readonly MapDefinition[] = [
     id: 'reliquary',
     name: 'The Reliquary',
     epithet: 'NINE ROOMS BELOW',
-    description: 'A sealed dungeon of nine chambers. Doors become chokepoints; stone stops bodies and bullets.',
+    description: 'Nine sealed civil-defense chambers whose concrete walls stop bodies and bullets—and whose doors move when the old alarms sing.',
     accent: '#c9b9ff',
     textureIndex: 2,
     bounds: { minX: -1450, maxX: 1450, minY: -1050, maxY: 1050 },
@@ -110,4 +110,3 @@ export const MAPS: readonly MapDefinition[] = [
 ]
 
 export const mapById = (id: MapId): MapDefinition => MAPS.find((map) => map.id === id) ?? MAPS[0]
-
