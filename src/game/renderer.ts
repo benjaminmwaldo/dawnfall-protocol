@@ -33,7 +33,7 @@ const HUNTER_VISUALS: Record<PlayerState['character'], { skin: string; hair: str
   vesper: { skin: '#e8c7b2', hair: '#181a24', coat: '#34304c', accent: '#d6bcff', build: 0.88, height: 1.04, hairLength: 16, style: 'long' },
   cinder: { skin: '#d7a17c', hair: '#481b18', coat: '#642d28', accent: '#ff8265', build: 0.98, height: 1.01, hairLength: 11, style: 'waves' },
   bastion: { skin: '#9b5f43', hair: '#171317', coat: '#304941', accent: '#74d8c2', build: 0.86, height: 1.01, hairLength: 14, style: 'ponytail' },
-  warden: { skin: '#efd0bb', hair: '#10141c', coat: '#273b38', accent: '#a9efdc', build: 0.82, height: 0.98, hairLength: 13, style: 'bob' },
+  warden: { skin: '#d9aa91', hair: '#10141c', coat: '#30304f', accent: '#b6a5ff', build: 0.82, height: 0.98, hairLength: 25, style: 'long' },
   nyx: { skin: '#8e5d49', hair: '#151018', coat: '#342747', accent: '#9587ff', build: 0.9, height: 1.02, hairLength: 6, style: 'shaved' },
   tempest: { skin: '#e5b99d', hair: '#d8dce7', coat: '#29465a', accent: '#69c9ff', build: 0.86, height: 1.06, hairLength: 14, style: 'ponytail' },
   briar: { skin: '#dca17f', hair: '#3a1d20', coat: '#4f2738', accent: '#e45d82', build: 1.05, height: 0.99, hairLength: 18, style: 'waves' },

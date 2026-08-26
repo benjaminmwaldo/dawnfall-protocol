@@ -58,7 +58,7 @@ const stableHash = (key: string): number => {
   return Math.abs(hash)
 }
 const stableArtVariant = (key: string): number => (stableHash(key) % 5) + 1
-const upgradeSceneStyle = (character: PlayerConfig['character'], variant: number) => character === 'rapunsel' || character === 'cinder' || character === 'bastion'
+const upgradeSceneStyle = (character: PlayerConfig['character'], variant: number) => character === 'rapunsel' || character === 'cinder' || character === 'bastion' || character === 'warden'
   ? `--splash-art:url('${ART_BASE}upgrade-${character}-${variant}.webp');--portrait-art:none;`
   : CHARACTER_PORTRAITS[character]
     ? `--splash-art:url('${ART_BASE}upgrade-backdrop-${variant}.webp');--portrait-art:url('${ART_BASE}${CHARACTER_PORTRAITS[character]}');`

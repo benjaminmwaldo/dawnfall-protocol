@@ -215,3 +215,44 @@
 - Approved main splash: `art-source/bastion/production-main-v2/ama-main-splash-v2.png`
 - Alternate splash set: `art-source/bastion/production-set-v1/`
 - Review copies: `../character-review/bastion/face-options-v3-reference-reset/`
+
+# Aiko
+
+## Status
+- Phase: production-ready
+- Redesign decision: Preserve the existing character; no face or body redesign
+- Identity anchor: Existing academy upgrade artwork, preserved unchanged as `art-source/aiko/consistency-v1/aiko-upgrade-academy-anchor.webp`
+- Candidate set: `art-source/aiko/consistency-v1/`
+- Last reviewed: 2026-08-26
+
+## Core concept
+- Role: Japanese emergency physician and battlefield support hunter
+- Apparent age: 29
+- Build: Petite, compact, softly athletic
+- Personality read: Gentle, observant, quietly mischievous, composed under pressure, and intensely protective
+- Lore anchor: Former emergency physician in Yokohama's last vertical shelter who crossed the dead rail to reach patients abandoned by the evacuation authority
+
+## Locked visual identity
+- Face: Softly heart-shaped face with gently tapered jaw
+- Eyes: Dark almond eyes with a subtle low crease
+- Nose and mouth: Straight softly rounded nose and naturally full lower lip
+- Distinguishing detail: Small beauty mark beneath the left eye
+- Hair: Glossy natural black, center-offset part, loose face-framing strands, mostly straight with soft natural waves, consistently waist length
+- Costume palette: Indigo, ivory, weathered black, and restrained gold
+- Main-class silhouette: Repaired indigo shrine-inspired field coat, practical light armor, and a glowing signal lantern
+
+## Prompt lineage
+- Existing academy splash selected as the sole identity anchor because it provides the clearest view of the preferred long-haired face
+- Selection portrait regenerated to combine the locked long-haired identity with the existing medic armor, lantern, healing-sigil halo, and square roster layout
+- Shopping, beach, café, and lantern splashes regenerated as identity-preserving edits of their existing scenes
+- Existing academy splash intentionally left unchanged to prevent identity averaging
+- Complete consistency pass approved on 2026-08-26
+
+## Rejected directions
+- Short or chin-length bob: User explicitly prefers Aiko with long hair
+- Full character redesign: User likes the existing identity and requested consistency only
+- Replacing the battlefield-medic costume or signal lantern: Both remain core class markers
+
+## Asset paths
+- Consistency-pass sources: `art-source/aiko/consistency-v1/`
+- Review copies: `../character-review/aiko/consistency-v1/`
