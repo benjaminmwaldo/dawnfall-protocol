@@ -135,3 +135,83 @@
 - Approved assembly: `art-source/scarlet/scarlet-assembled-approved.png`
 - Production source set: `art-source/scarlet/production-set-v1/` (selection plus five upgrade splashes; approved)
 - Runtime exports: `public/art/cinder-portrait.webp` and `public/art/upgrade-cinder-1.webp` through `public/art/upgrade-cinder-5.webp`
+- Café freckle correction: `art-source/scarlet/production-set-v1/scarlet-upgrade-cafe-v3.png`; approved on 2026-08-25. Preserves Scarlet's warm cheek-and-nose flush and characteristic freckles while removing the excessive forehead coverage.
+
+---
+
+# Ama Bennett (callsign: Bastion)
+
+## Status
+- Phase: production-ready
+- Approved face: Option 5 from reference-reset batch
+- Identity reference image: `art-source/bastion/bastion-face-selected-option-5.png`
+- Validated identity views: `art-source/bastion/identity-validation-v1/bastion-validation-1.png` through `bastion-validation-6.png`; all six passed user review
+- Current candidate set: `art-source/bastion/face-options-v3-reference-reset/bastion-face-option-1.png` through `bastion-face-option-6.png`
+- Current torso candidate set: `art-source/bastion/torso-v1-standardized/ama-torso-option-1.png` through `ama-torso-option-6.png`
+- Approved torso reference: `art-source/bastion/ama-torso-approved-option-4.png`
+- Current assembled proof: `art-source/bastion/assembly-v1/ama-assembled-proof-v1.png`
+- Approved main splash: `art-source/bastion/production-main-v2/ama-main-splash-v2.png`
+- Approved alternate splash set: `art-source/bastion/production-set-v1/`
+- Last reviewed: 2026-08-25
+
+## Core concept
+- Full name: Ama Bennett
+- Game-facing name: Ama; use first names throughout ordinary UI
+- Callsign: Bastion, earned during her civil-defense command service
+- Naming note: Ama is her Akan Saturday-born day name; Bennett comes from her English family line and should appear primarily in biography or lore
+- Role and setting: Ghanaian-English former civil-defense captain and military field leader in the dystopian Black Signal apocalypse
+- Apparent age: 28
+- Cultural background: Mixed Ghanaian-English; the exact family fraction remains flexible, and her visual identity is defined through specific observable traits rather than ancestry stereotypes
+- Personality read: Disciplined, protective, dryly funny, strategically patient, and more tender with frightened civilians than her command voice suggests
+- Body direction: Petite, balanced lean-hourglass build with subtle functional conditioning, as locked in torso option 4
+
+## Locked face identity
+- Skin: Warm medium-brown tone with natural texture
+- Face shape: Long softly rectangular face with strong lateral cheekbones and a moderate, softly squared jaw
+- Eyes and brows: Narrow deep-set dark almond eyes with low, mostly straight brows
+- Nose: Broad straight nose with a softly flattened tip, broad natural alar base, and subtle asymmetry
+- Mouth: Wide full lips with a slightly heavier lower lip and naturally restrained expression
+- Hair: Dark chestnut-black, dense 3A-3B natural curls, practical low ponytail with side part and loose temple strands
+- Hair exclusion: No braids, cornrows, braided crowns, braided updos, beads, or extensions
+- Presence: Thoughtful military authority rather than severity or generic glamour
+- Passing angles and expressions: Front neutral, left three-quarter soft smile, right three-quarter serious focus, left-profile open laugh, right-profile determination, and modest high-angle concern
+
+## Locked torso identity
+- Approved option: Torso option 4
+- Shoulder and ribcage structure: Moderate feminine shoulders with a medium ribcage
+- Bust and waist: Medium natural bust with a defined but plausible waist
+- Torso length: Medium torso, neither compact nor elongated
+- Hip and upper-thigh structure: Proportionate rounded hips with lean upper thighs
+- Muscle and weight distribution: Balanced lean-hourglass build with subtle all-over functional conditioning
+
+## Prompt lineage
+- Face batch v1: Three exploratory portraits generated with braided hairstyles; user preferred option 2's facial direction but rejected braids across the character
+- Face batch v2: Six clean, comparable head-and-shoulders portraits using one dark chestnut low ponytail, teal training top, three-quarter crop, fixed lighting, and deliberately varied facial structures
+- Face batch v2 selection: User preferred option 3 but found the overall facial geometry disconnected from the character's mixed Ghanaian-English background, so the selection was not locked
+- Face batch v3 reference reset: Six original identities generated from non-identifying observable traits extracted from two user-provided photographs of the same Black clothing model. The reference subject's likeness was explicitly excluded; only broad structural language was carried forward
+- Face batch v3 selection: Option 5 selected on 2026-08-25; long softly rectangular face, strong lateral cheekbones, moderate jaw, narrow deep-set almond eyes, low straight brows, broad straight nose with softly flattened tip and natural asymmetry, and wide full lips
+- Identity-validation v1: Six views generated from option 5 as the sole anchor: front neutral, left three-quarter soft smile, right three-quarter serious focus, left-profile open laugh, right-profile determination, and modest high-angle concern. All six approved on 2026-08-25.
+- Torso exploration v1: Initial six head-cropped bodies were discarded before review because shirt length, framing, and camera distance drifted between candidates. The standardized set uses one presentation template and varies only shoulders, ribcage, bust, waist, torso length, hips, thighs, and functional conditioning.
+- Torso selection: Standardized option 4 approved on 2026-08-25
+- Assembly proof v1: Approved face and torso combined into a neutral full-body study with provisional 5'7 visual height, natural approximately 1:7.5 head-to-body scale, balanced legs, relaxed three-quarter contrapposto, and complete hands and feet
+- Assembly approval: Full-body proof approved on 2026-08-25
+- Main splash v1: Vertical full-body action-poster composition generated, then stopped before integration because it did not match the roster portrait layout
+- Main splash v2: Square upper-thigh portrait using the roster's centered three-quarter composition, circular ability-sigil halo, ruined-world backdrop, and one readable class prop; approved on 2026-08-25
+- Alternate production set v1: Five full-frame upgrade splashes in distinct contexts and outfits: adult academy archive, city shopping arcade, Ghanaian coast beach, rainy café, and reclaimed-rooftop lantern festival. Academy and lantern scenes were regenerated twice to correct body proportions and stiffness; the complete set was approved on 2026-08-25.
+
+## Rejected directions
+- Braids or braided crown: Explicitly rejected for Bastion
+- Treating the old option 2 as approved: It is a directional reference only; selection remains open
+- Face batch v2 and its provisional option 3: Rejected because the dark complexion was paired with facial geometry that read too generically European
+- Locking the old powerful, broad-shouldered body before the torso phase: User wants her younger and somewhat slighter
+
+## Asset paths
+- Current face candidates: `art-source/bastion/face-options-v3-reference-reset/`
+- Selected face anchor: `art-source/bastion/bastion-face-selected-option-5.png`
+- Identity-validation set: `art-source/bastion/identity-validation-v1/`
+- Current torso candidates: `art-source/bastion/torso-v1-standardized/`
+- Approved torso: `art-source/bastion/ama-torso-approved-option-4.png`
+- Assembly proof candidate: `art-source/bastion/assembly-v1/ama-assembled-proof-v1.png`
+- Approved main splash: `art-source/bastion/production-main-v2/ama-main-splash-v2.png`
+- Alternate splash set: `art-source/bastion/production-set-v1/`
+- Review copies: `../character-review/bastion/face-options-v3-reference-reset/`

@@ -32,7 +32,7 @@ const BOSS_COLORS: Partial<Record<EnemyState['type'], string>> = {
 const HUNTER_VISUALS: Record<PlayerState['character'], { skin: string; hair: string; coat: string; accent: string; build: number; height: number; hairLength: number; style: 'long' | 'bob' | 'braid' | 'ponytail' | 'shaved' | 'waves' }> = {
   vesper: { skin: '#e8c7b2', hair: '#181a24', coat: '#34304c', accent: '#d6bcff', build: 0.88, height: 1.04, hairLength: 16, style: 'long' },
   cinder: { skin: '#d7a17c', hair: '#481b18', coat: '#642d28', accent: '#ff8265', build: 0.98, height: 1.01, hairLength: 11, style: 'waves' },
-  bastion: { skin: '#f0c8a7', hair: '#c9a276', coat: '#304941', accent: '#74d8c2', build: 1.12, height: 1.08, hairLength: 7, style: 'bob' },
+  bastion: { skin: '#9b5f43', hair: '#171317', coat: '#304941', accent: '#74d8c2', build: 0.86, height: 1.01, hairLength: 14, style: 'ponytail' },
   warden: { skin: '#efd0bb', hair: '#10141c', coat: '#273b38', accent: '#a9efdc', build: 0.82, height: 0.98, hairLength: 13, style: 'bob' },
   nyx: { skin: '#8e5d49', hair: '#151018', coat: '#342747', accent: '#9587ff', build: 0.9, height: 1.02, hairLength: 6, style: 'shaved' },
   tempest: { skin: '#e5b99d', hair: '#d8dce7', coat: '#29465a', accent: '#69c9ff', build: 0.86, height: 1.06, hairLength: 14, style: 'ponytail' },

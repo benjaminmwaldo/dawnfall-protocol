@@ -16,6 +16,9 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
   await expect(page.locator('.portrait-art')).toHaveCount(12)
   await expect(page.locator('.portrait-art').first()).toHaveCSS('background-image', /hunter-portraits-v3\.webp/)
   await expect(page.locator('[data-character="cinder"] .portrait-art')).toHaveCSS('background-image', /cinder-portrait\.webp/)
+  await expect(page.locator('[data-character="bastion"] .portrait-art')).toHaveCSS('background-image', /ama-portrait\.webp/)
+  await expect(page.locator('[data-character="bastion"]')).toContainText('Ama')
+  await expect(page.locator('[data-character="bastion"]')).toContainText('Ghanaian-English')
   await expect(page.locator('.weapon-art')).toHaveCount(10)
   await expect(page.locator('.map-card')).toHaveCount(3)
   await expect(page.locator('[data-map="reliquary"]')).toContainText('9 ROOMS')
@@ -73,7 +76,7 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
   expect(failedRequests).toEqual([])
   expect(pageErrors).toEqual([])
 
-  for (const art of ['upgrade-vesper-1.webp', 'upgrade-seraph-5.webp', 'upgrade-backdrop-1.webp', 'upgrade-rapunsel-5.webp', 'upgrade-cinder-1.webp', 'upgrade-cinder-2.webp', 'upgrade-cinder-3.webp', 'upgrade-cinder-4.webp', 'upgrade-cinder-5.webp', 'cinder-portrait.webp', 'rapunsel-portrait.webp', 'aiko-portrait.webp', 'eira-portrait.webp', 'mara-portrait.webp', 'zahra-portrait.webp', 'recap-victory-1.webp', 'recap-defeat-5.webp']) {
+  for (const art of ['upgrade-vesper-1.webp', 'upgrade-seraph-5.webp', 'upgrade-backdrop-1.webp', 'upgrade-rapunsel-5.webp', 'upgrade-cinder-1.webp', 'upgrade-cinder-2.webp', 'upgrade-cinder-3.webp', 'upgrade-cinder-4.webp', 'upgrade-cinder-5.webp', 'upgrade-bastion-1.webp', 'upgrade-bastion-2.webp', 'upgrade-bastion-3.webp', 'upgrade-bastion-4.webp', 'upgrade-bastion-5.webp', 'cinder-portrait.webp', 'ama-portrait.webp', 'rapunsel-portrait.webp', 'aiko-portrait.webp', 'eira-portrait.webp', 'mara-portrait.webp', 'zahra-portrait.webp', 'recap-victory-1.webp', 'recap-defeat-5.webp']) {
     expect((await page.request.get(`/art/${art}`)).ok()).toBe(true)
   }
 })
