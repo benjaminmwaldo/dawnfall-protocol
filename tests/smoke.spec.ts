@@ -58,7 +58,7 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
   await expect(page.locator('#map-hud')).toContainText('Black Signal')
   await expect(page.getByTestId('player-hearts')).toBeVisible()
   await expect(page.locator('.player-hearts .heart-shell')).toHaveCount(5)
-  await expect(page.locator('.team-hearts .heart-shell')).toHaveCount(5)
+  await expect(page.locator('.team-hearts .heart-shell')).toHaveCount(0)
   await expect(page.locator('.regen-ring')).toBeVisible()
   await page.mouse.move(1180, 450)
   await page.mouse.down()
@@ -74,10 +74,13 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
     expect.stringContaining('cinder-portrait.webp'),
     expect.stringContaining('armory-atlas-v2.webp'),
     expect.stringContaining('sword-dawncleaver.webp'),
-    expect.stringContaining('companion-sprites-v1.webp'),
-    expect.stringContaining('enemy-sprites.webp'),
-    expect.stringContaining('structure-atlas-v2.webp'),
-    expect.stringContaining('biome-textures-v1.webp'),
+    expect.stringContaining('pixel-companions-v1.webp'),
+    expect.stringContaining('pixel-hunters-v1.webp'),
+    expect.stringContaining('pixel-weapons-v1.webp'),
+    expect.stringContaining('pixel-enemies-v1.webp'),
+    expect.stringContaining('pixel-bosses-v1.webp'),
+    expect.stringContaining('pixel-structures-v1.webp'),
+    expect.stringContaining('pixel-terrain-props-v1.webp'),
     expect.stringContaining('night-ground.webp'),
   ]))
   expect(failedRequests).toEqual([])

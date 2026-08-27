@@ -641,12 +641,12 @@ class DawnfallApp {
     if (xpFill) xpFill.style.width = `${Math.min(100, ((hudPlayer?.xp ?? 0) / Math.max(1, hudPlayer?.xpToNext ?? 1)) * 100)}%`
 
     const team = document.querySelector('#team-hud')
-    if (team) team.innerHTML = snapshot.players.map((player) => `
+    if (team) team.innerHTML = snapshot.players.length > 1 ? snapshot.players.map((player) => `
       <article title="${escapeHtml(player.name)} · Level ${player.level}" class="team-chip ${player.downed ? 'downed' : ''} ${player.eliminated ? 'eliminated' : ''} ${player.isolatedFor >= 3 ? 'separated' : ''} ${player.id === focusId && localPlayer?.eliminated ? 'watching' : ''}">
         <span class="team-portrait" style="--player:${player.color};${portraitStyle(player.character)}"></span>
         ${heartsMarkup(player.health, player.maxHealth, 'team-hearts')}
         <small>${player.eliminated ? '×' : player.downed ? Math.ceil(player.downTimer) : player.isolatedFor >= 3 ? '!' : player.id === focusId && localPlayer?.eliminated ? '◉' : ''}</small>
-      </article>`).join('')
+      </article>`).join('') : ''
 
     const perks = document.querySelector('#perks-hud')
     const activePerks = Object.entries(hudPlayer?.perks ?? {}).filter(([, perkRank]) => perkRank > 0).slice(-10)

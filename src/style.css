@@ -174,7 +174,7 @@ body::before {
 .notice.error { color: var(--red); }
 
 .game-shell { position: fixed; inset: 0; overflow: hidden; background: #07100e; cursor: crosshair; }
-#game-canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+#game-canvas { position: absolute; left: 50%; top: 50%; display: block; transform: translate(-50%, -50%); touch-action: none; }
 .game-hud { position: absolute; inset: 0; pointer-events: none; font-size: 10px; }
 .hud-top-left { position: absolute; left: 24px; top: 20px; display: flex; align-items: center; gap: 14px; color: var(--muted); }
 .hud-brand { color: var(--ink); font-family: 'Oswald', sans-serif; letter-spacing: .12em; }
@@ -892,17 +892,18 @@ body::before {
 /* Approved 8-bit combat pass: the game is authored to a small logical canvas
    and enlarged with hard nearest-neighbor pixels. Interface art stays painterly. */
 #game-canvas {
-  image-rendering: pixelated;
   image-rendering: crisp-edges;
+  image-rendering: pixelated;
   background: #031914;
 }
 .game-shell::before { display: none; }
-.controls-hud, .map-hud, .hud-brand, .timer-block > small { display: none; }
-.timer-block { top: 10px; width: 188px; padding: 5px 10px 7px; background: rgba(2,8,6,.72); border-bottom: 2px solid rgba(242,212,121,.72); text-shadow: none; }
+.controls-hud, .map-hud, .hud-brand, .timer-block > small, .mute-button { display: none; }
+.timer-block { top: 16px; width: 220px; padding: 0; background: none; border: 0; text-shadow: none; }
 .timer-block::before { display: none; }
-.timer-block strong { margin: 0 0 4px; font-size: 29px; line-height: 1; text-shadow: 2px 2px #020806; }
-.xp-track { height: 4px; background: rgba(255,255,255,.12); }
-.hud-top-left { left: 15px; top: 53px; }
+.timer-block strong { margin: 0 0 7px; color: #f0c987; font: 900 43px/.9 'DM Mono', monospace; letter-spacing: -.08em; text-shadow: -3px -3px #080704, 3px -3px #080704, -3px 3px #080704, 3px 3px #080704; }
+.xp-track { width: 168px; height: 5px; margin: 0 auto; border: 2px solid #050806; background: #1a2821; }
+.xp-track i { background: #74d8c2; }
+.hud-top-left { display: none; }
 #level-readout { min-width: 28px; padding: 3px 6px; border: 1px solid rgba(116,216,194,.4); color: #b8f1d9; background: rgba(2,8,6,.72); font: 9px 'DM Mono', monospace; text-align: center; }
 .mute-button { right: 13px; top: 13px; width: 34px; height: 34px; padding: 0; border: 1px solid rgba(255,255,255,.14); border-radius: 0; color: #e9eee9; background: rgba(2,8,6,.72); font: 18px Georgia, serif; letter-spacing: 0; text-shadow: none; }
 
@@ -913,19 +914,21 @@ body::before {
 
 /* Symbol-first edge HUD. */
 .ammo-hud { position: static; width: 0; height: 0; padding: 0; transform: none; border: 0; clip-path: none; background: none; box-shadow: none; backdrop-filter: none; }
-.pixel-vitals { position: fixed; z-index: 24; left: 14px; top: 14px; display: flex; align-items: center; gap: 9px; padding: 6px 8px; background: rgba(2,8,6,.7); border-left: 3px solid #ef718e; }
-.pixel-vitals .player-hearts { flex-wrap: nowrap; gap: 4px; }
-.pixel-vitals .player-hearts .heart-shell { width: 24px; height: 21px; filter: none; }
-.pixel-vitals .regen-ring { width: 32px; height: 32px; grid-row: auto; border-radius: 0; box-shadow: none; background: conic-gradient(#74d8c2 var(--regen-progress), rgba(116,216,194,.12) 0); }
-.pixel-vitals .regen-ring::before { inset: 4px; border-radius: 0; background: #07100e; }
+.heart-shell { position: relative; overflow: hidden; background: #030504; filter: none; }
+.heart-shell::after { content: ''; position: absolute; inset: 3px; background: linear-gradient(90deg, #ff4f60 0 var(--heart-fill), #401a22 var(--heart-fill) 100%); clip-path: inherit; }
+.pixel-vitals { position: fixed; z-index: 24; left: 18px; top: 20px; display: flex; align-items: center; gap: 10px; padding: 0; background: none; border: 0; }
+.pixel-vitals .player-hearts { flex-wrap: nowrap; gap: 7px; }
+.pixel-vitals .player-hearts .heart-shell { width: 39px; height: 35px; filter: none; }
+.pixel-vitals .regen-ring { width: 31px; height: 31px; grid-row: auto; border: 3px solid #050806; border-radius: 50%; box-shadow: none; background: conic-gradient(#74d8c2 var(--regen-progress), rgba(7,22,17,.82) 0); }
+.pixel-vitals .regen-ring::before { inset: 5px; border-radius: 50%; background: #07100e; }
 .pixel-vitals .regen-heart { font-size: 14px; }
-.pixel-ammo { position: fixed; z-index: 24; left: 16px; bottom: 16px; min-height: 29px; display: flex; align-items: flex-end; gap: 4px; padding: 8px 9px 10px; background: rgba(2,8,6,.74); border-left: 3px solid #f2d479; }
-.pixel-ammo > i { width: 10px; height: 18px; display: block; background: #24302b; border: 2px solid rgba(233,240,234,.25); }
-.pixel-ammo > i.loaded { background: #f2d479; border-color: #fff2b9; }
+.pixel-ammo { position: fixed; z-index: 24; left: 18px; bottom: 17px; min-height: 35px; display: flex; align-items: flex-end; gap: 7px; padding: 0 0 5px; background: none; border: 0; }
+.pixel-ammo > i { width: 11px; height: 29px; display: block; background: #242721; border: 3px solid #050504; box-shadow: inset 0 0 0 2px #4e5148; clip-path: polygon(22% 0, 78% 0, 100% 16%, 100% 100%, 0 100%, 0 16%); }
+.pixel-ammo > i.loaded { background: #d58d2f; border-color: #050504; box-shadow: inset 0 0 0 2px #ffe1a0; }
 .pixel-ammo > strong { min-width: 36px; color: #fff2b9; font: 28px/1 'DM Mono', monospace; }
-.pixel-ammo > em { position: absolute; left: 9px; right: 9px; bottom: 5px; height: 2px; background: linear-gradient(90deg, #74d8c2 var(--reload-progress), rgba(255,255,255,.1) 0); }
-.pixel-ability { position: fixed; z-index: 24; right: 16px; bottom: 16px; width: 58px; height: 58px; display: grid; place-items: center; border: 3px solid color-mix(in srgb, var(--accent) 50%, #101715); background: conic-gradient(var(--accent) var(--special-progress), rgba(2,8,6,.82) 0); color: #07100e; box-shadow: 4px 4px rgba(0,0,0,.45); }
-.pixel-ability::before { content: ''; position: absolute; inset: 5px; background: #07100e; }
+.pixel-ammo > em { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: linear-gradient(90deg, #74d8c2 var(--reload-progress), #17221d 0); }
+.pixel-ability { position: fixed; z-index: 24; right: 20px; bottom: 18px; width: 72px; height: 72px; display: grid; place-items: center; border: 5px solid #050504; border-radius: 50%; outline: 4px solid color-mix(in srgb, var(--accent) 72%, #b67635); background: conic-gradient(var(--accent) var(--special-progress), #231519 0); color: #07100e; box-shadow: 5px 5px #020302; }
+.pixel-ability::before { content: ''; position: absolute; inset: 7px; border-radius: 50%; background: #3a1e26; }
 .pixel-ability span { position: relative; z-index: 1; color: var(--accent); font: 27px Georgia, serif; }
 .pixel-ability b { position: absolute; z-index: 2; right: 2px; bottom: 1px; min-width: 16px; height: 16px; display: grid; place-items: center; color: #07100e; background: var(--accent); font: 8px 'DM Mono', monospace; }
 .pixel-ability.ready { border-color: var(--accent); }
@@ -935,6 +938,7 @@ body::before {
 .team-chip > .team-portrait { width: 25px; height: 25px; border-radius: 0; }
 .team-chip > .team-hearts { width: auto; height: auto; display: flex; align-items: center; gap: 1px; margin: 0; border: 0; border-radius: 0; }
 .team-chip > .team-hearts .heart-shell { width: 8px; height: 7px; }
+.team-chip > .team-hearts .heart-shell::after { inset: 1px; }
 .team-chip small { color: #ef718e; font: 12px 'DM Mono', monospace; text-align: center; }
 .perks-hud { right: 14px; top: 58px; }
 .perks-hud span.perk-medallion { width: 34px; height: 34px; border-radius: 0; image-rendering: pixelated; }

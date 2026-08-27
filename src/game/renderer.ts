@@ -15,11 +15,21 @@ const TAU = Math.PI * 2
 export const WORLD_Y_SCALE = 0.72
 export const PIXEL_SCALE = 6
 const CHARACTER_SPRITE_INDEX: Record<PlayerState['character'], number> = { vesper: 0, cinder: 1, bastion: 2, warden: 3, nyx: 4, tempest: 5, briar: 6, seraph: 7, rapunsel: 8, eira: 9, mara: 10, zahra: 11 }
+const PIXEL_HUNTER_INDEX: Partial<Record<PlayerState['character'], number>> = {
+  vesper: 0, cinder: 1, warden: 2, nyx: 3, tempest: 4, briar: 5, seraph: 6, rapunsel: 7,
+}
 const WEAPON_SPRITE_INDEX: Record<PlayerState['weapon'], number> = {
   revolver: 0, scattergun: 1, 'arc-rifle': 2, 'burst-carbine': 3, railgun: 4,
   'grenade-launcher': 5, flamethrower: 6, 'frost-cannon': 7, seeker: 8, sword: 9,
 }
 const COMPANION_SPRITE_INDEX: Record<CompanionState['kind'], number> = { gravewing: 0, ashkit: 1, 'aegis-hound': 2, 'mercy-moth': 3, shadecat: 4, 'storm-wisp': 5, thornling: 6, sunbird: 7 }
+const AMBIENT_ENEMY_INDEX: Partial<Record<EnemyState['type'], number>> = {
+  thrall: 0, skitter: 1, spitter: 2, bulwark: 3, wraith: 4, charger: 5, hexer: 6, leech: 7,
+}
+const BOSS_SPRITE_INDEX: Partial<Record<EnemyState['type'], number>> = {
+  tollkeeper: 0, broodmother: 1, graveknight: 2, 'eclipse-eye': 3,
+  'void-hart': 4, 'prism-witch': 5, 'iron-choir': 6, 'star-eater': 7,
+}
 const BOSS_COLORS: Partial<Record<EnemyState['type'], string>> = {
   tollkeeper: '#ef718e', broodmother: '#e45d82', graveknight: '#f2d479', 'eclipse-eye': '#aa86ff',
   'void-hart': '#48e1d0', 'prism-witch': '#ef8dff', 'iron-choir': '#d69468', 'star-eater': '#7f5cff',
@@ -39,15 +49,15 @@ const HUNTER_VISUALS: Record<PlayerState['character'], { skin: string; hair: str
   zahra: { skin: '#c78b68', hair: '#161217', coat: '#3d334c', accent: '#efb06e', build: 0.9, height: 1.05, hairLength: 12, style: 'ponytail' },
 }
 const STRUCTURE_ART: Record<StructureType, { index: number; size: number; label: string; color: string }> = {
-  moonwell: { index: 0, size: 156, label: 'MOONWELL · HEART CRYSTAL', color: '116, 216, 194' },
-  'ward-tower': { index: 1, size: 164, label: 'WARD TOWER · FIRES', color: '116, 216, 194' },
-  'ritual-stone': { index: 2, size: 158, label: 'RITUAL STONE · RAPID FIRE', color: '242, 212, 121' },
-  'sun-forge': { index: 3, size: 154, label: 'SUN FORGE · HEART CRYSTAL', color: '255, 121, 93' },
-  'cinder-ballista': { index: 4, size: 158, label: 'CINDER BALLISTA · FIRES', color: '255, 121, 93' },
-  'ember-altar': { index: 5, size: 154, label: 'EMBER ALTAR · RAPID FIRE', color: '255, 168, 76' },
-  'reliquary-font': { index: 6, size: 154, label: 'RELIQUARY FONT · HEART CRYSTAL', color: '137, 201, 255' },
-  'ossuary-sentry': { index: 7, size: 158, label: 'OSSUARY SENTRY · FIRES', color: '201, 185, 255' },
-  'echo-seal': { index: 8, size: 150, label: 'ECHO SEAL · RAPID FIRE', color: '201, 185, 255' },
+  moonwell: { index: 0, size: 168, label: 'MOONWELL · HEART CRYSTAL', color: '116, 216, 194' },
+  'ward-tower': { index: 1, size: 168, label: 'WARD TOWER · FIRES', color: '116, 216, 194' },
+  'ritual-stone': { index: 2, size: 168, label: 'RITUAL STONE · RAPID FIRE', color: '242, 212, 121' },
+  'sun-forge': { index: 3, size: 168, label: 'SUN FORGE · HEART CRYSTAL', color: '255, 121, 93' },
+  'cinder-ballista': { index: 4, size: 168, label: 'CINDER BALLISTA · FIRES', color: '255, 121, 93' },
+  'ember-altar': { index: 5, size: 168, label: 'EMBER ALTAR · RAPID FIRE', color: '255, 168, 76' },
+  'reliquary-font': { index: 6, size: 168, label: 'RELIQUARY FONT · HEART CRYSTAL', color: '137, 201, 255' },
+  'ossuary-sentry': { index: 7, size: 168, label: 'OSSUARY SENTRY · FIRES', color: '201, 185, 255' },
+  'echo-seal': { index: 8, size: 168, label: 'ECHO SEAL · RAPID FIRE', color: '201, 185, 255' },
 }
 
 // Every runtime sprite is authored facing east. Angles in the left half-plane are
@@ -71,6 +81,8 @@ export class GameRenderer {
   private displayScale = PIXEL_SCALE
   private cameraX = 0
   private cameraY = 0
+  private renderCameraX = 0
+  private renderCameraY = 0
   private lastFrame = performance.now()
   private lastEventId = 0
   private effects: Effect[] = []
@@ -79,30 +91,35 @@ export class GameRenderer {
   private readonly weaponSpriteAtlas = new Image()
   private readonly companionSpriteAtlas = new Image()
   private readonly enemySpriteAtlas = new Image()
+  private readonly bossSpriteAtlas = new Image()
   private readonly structureAtlas = new Image()
-  private readonly biomeTextureAtlas = new Image()
+  private readonly terrainPropAtlas = new Image()
 
   constructor(canvas: HTMLCanvasElement, artBase: string) {
     this.canvas = canvas
     const context = canvas.getContext('2d')
     if (!context) throw new Error('Canvas rendering is not supported in this browser.')
     this.context = context
-    this.companionSpriteAtlas.src = `${artBase}companion-sprites-v1.webp`
-    this.enemySpriteAtlas.src = `${artBase}enemy-sprites.webp`
-    this.structureAtlas.src = `${artBase}structure-atlas-v2.webp`
-    this.biomeTextureAtlas.src = `${artBase}biome-textures-v1.webp`
+    this.companionSpriteAtlas.src = `${artBase}pixel-companions-v1.webp`
+    this.hunterSpriteAtlas.src = `${artBase}pixel-hunters-v1.webp`
+    this.weaponSpriteAtlas.src = `${artBase}pixel-weapons-v1.webp`
+    this.enemySpriteAtlas.src = `${artBase}pixel-enemies-v1.webp`
+    this.bossSpriteAtlas.src = `${artBase}pixel-bosses-v1.webp`
+    this.structureAtlas.src = `${artBase}pixel-structures-v1.webp`
+    this.terrainPropAtlas.src = `${artBase}pixel-terrain-props-v1.webp`
     this.resize()
   }
 
   resize() {
-    const bounds = this.canvas.getBoundingClientRect()
-    this.cssWidth = Math.max(320, bounds.width)
-    this.cssHeight = Math.max(240, bounds.height)
+    this.cssWidth = Math.max(320, window.innerWidth)
+    this.cssHeight = Math.max(240, window.innerHeight)
     this.displayScale = this.cssWidth <= 760 ? 4 : PIXEL_SCALE
     this.width = Math.max(80, Math.ceil(this.cssWidth / this.displayScale))
     this.height = Math.max(64, Math.ceil(this.cssHeight / this.displayScale))
     this.canvas.width = this.width
     this.canvas.height = this.height
+    this.canvas.style.width = `${this.width * this.displayScale}px`
+    this.canvas.style.height = `${this.height * this.displayScale}px`
     this.context.setTransform(1, 0, 0, 1, 0, 0)
     this.context.imageSmoothingEnabled = false
   }
@@ -117,6 +134,8 @@ export class GameRenderer {
       this.cameraX += (focus.x + focus.vx * prediction - this.cameraX) * Math.min(1, dt * 10)
       this.cameraY += (focus.y + focus.vy * prediction - this.cameraY) * Math.min(1, dt * 10)
     }
+    this.renderCameraX = Math.round(this.cameraX / this.displayScale) * this.displayScale
+    this.renderCameraY = Math.round(this.cameraY * WORLD_Y_SCALE / this.displayScale) * this.displayScale / WORLD_Y_SCALE
 
     this.captureEffects(snapshot.events)
     const map = mapById(snapshot.mapId)
@@ -127,7 +146,7 @@ export class GameRenderer {
     this.drawGround(map)
     context.translate(this.width / 2, this.height / 2)
     context.scale(1 / this.displayScale, WORLD_Y_SCALE / this.displayScale)
-    context.translate(-this.cameraX, -this.cameraY)
+    context.translate(-this.renderCameraX, -this.renderCameraY)
     this.drawTerrainDetails(map)
     this.drawWalls(map)
     this.drawStructures(snapshot.structures)
@@ -154,6 +173,14 @@ export class GameRenderer {
     return { width: this.cssWidth, height: this.cssHeight }
   }
 
+  private snapX(x: number): number {
+    return this.renderCameraX + Math.round((x - this.renderCameraX) / this.displayScale) * this.displayScale
+  }
+
+  private snapY(y: number): number {
+    return this.renderCameraY + Math.round((y - this.renderCameraY) * WORLD_Y_SCALE / this.displayScale) * this.displayScale / WORLD_Y_SCALE
+  }
+
   private drawGround(map: MapDefinition) {
     const context = this.context
     const palette = map.id === 'emberfall'
@@ -164,8 +191,8 @@ export class GameRenderer {
     context.fillStyle = palette.base
     context.fillRect(0, 0, this.width, this.height)
     const tile = 8
-    const cameraPixelX = this.cameraX / this.displayScale
-    const cameraPixelY = this.cameraY * WORLD_Y_SCALE / this.displayScale
+    const cameraPixelX = this.renderCameraX / this.displayScale
+    const cameraPixelY = this.renderCameraY * WORLD_Y_SCALE / this.displayScale
     const offsetX = ((-cameraPixelX % tile) + tile) % tile - tile
     const offsetY = ((-cameraPixelY % tile) + tile) % tile - tile
     for (let x = offsetX; x < this.width + tile; x += tile) {
@@ -181,9 +208,14 @@ export class GameRenderer {
           context.fillRect(Math.round(x + 2), Math.round(y + 3), 3, 2)
         }
         if (map.id === 'reliquary') {
-          context.fillStyle = hash % 3 === 0 ? palette.light : palette.mid
-          context.fillRect(Math.round(x), Math.round(y), tile - 1, 1)
-          context.fillRect(Math.round(x), Math.round(y + tile - 1), tile - 1, 1)
+          if (hash % 5 === 0) {
+            context.fillStyle = palette.light
+            context.fillRect(Math.round(x + 2), Math.round(y + 2), 4, 1)
+            context.fillRect(Math.round(x + 5), Math.round(y + 3), 1, 3)
+          } else if (hash % 3 === 0) {
+            context.fillStyle = palette.mid
+            context.fillRect(Math.round(x + 1), Math.round(y + 5), 3, 1)
+          }
         } else if (hash % 19 === 0) {
           context.fillStyle = palette.accent
           if (hash % 2 === 0) {
@@ -208,92 +240,171 @@ export class GameRenderer {
   }
 
   private drawTerrainDetails(map: MapDefinition) {
-    const context = this.context
-    const left = this.cameraX - this.width * this.displayScale / 2 - 90
-    const top = this.cameraY - this.height * this.displayScale / WORLD_Y_SCALE / 2 - 90
-    const grid = 96
+    const left = this.renderCameraX - this.width * this.displayScale / 2 - 180
+    const top = this.renderCameraY - this.height * this.displayScale / WORLD_Y_SCALE / 2 - 180
+    const grid = 180
     const startX = Math.floor(left / grid) * grid
     const startY = Math.floor(top / grid) * grid
-    for (let x = startX; x < left + this.width * this.displayScale + 180; x += grid) {
-      for (let y = startY; y < top + this.height * this.displayScale / WORLD_Y_SCALE + 180; y += grid) {
+    for (let x = startX; x < left + this.width * this.displayScale + 360; x += grid) {
+      for (let y = startY; y < top + this.height * this.displayScale / WORLD_Y_SCALE + 360; y += grid) {
         const hash = Math.abs(Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1
-        if (hash > 0.992 && map.id === 'gloamreach') {
-          context.fillStyle = '#020b08'
-          context.fillRect(x - 24, y + 12, 60, 12)
-          context.fillStyle = '#46534d'
-          context.fillRect(x - 18, y, 24, 18)
-          context.fillRect(x + 12, y + 6, 24, 12)
-          context.fillStyle = '#78827a'
-          context.fillRect(x - 12, y, 12, 6)
-          context.fillRect(x + 18, y + 6, 12, 6)
-        } else if (hash > 0.78 && map.id === 'gloamreach') {
-          context.fillStyle = '#487047'
-          context.fillRect(x - 6, y, 6, 12)
-          context.fillRect(x, y - 6, 6, 18)
-          context.fillRect(x + 6, y + 6, 6, 6)
-        } else if (hash > 0.985 && map.id === 'emberfall') {
-          context.fillStyle = '#080706'
-          context.fillRect(x - 24, y + 12, 60, 18)
-          context.fillStyle = '#683022'
-          context.fillRect(x - 18, y - 6, 24, 18)
-          context.fillRect(x + 12, y, 30, 12)
-          context.fillStyle = '#b94b2b'
-          context.fillRect(x - 6, y - 6, 12, 6)
-        } else if (hash < 0.08 && map.id !== 'reliquary') {
-          context.fillStyle = map.id === 'emberfall' ? '#8a3824' : '#174a36'
-          context.fillRect(x, y, 12, 6)
+        const jitterX = (Math.floor(hash * 11) % 3 - 1) * 30
+        const jitterY = (Math.floor(hash * 23) % 3 - 1) * 30
+        const kind = hash > 0.978 ? 'tree' : hash > 0.945 ? 'thorn' : hash > 0.865 ? 'ruin' : hash > 0.64 ? 'grass' : hash > 0.54 ? 'stones' : null
+        if (kind) {
+          const propX = this.snapX(x + jitterX)
+          const propY = this.snapY(y + jitterY)
+          if (map.id === 'gloamreach' && this.terrainPropAtlas.complete && this.terrainPropAtlas.naturalWidth > 0) {
+            this.drawAuthoredTerrainProp(propX, propY, kind, hash)
+          } else {
+            this.drawTerrainProp(map.id, propX, propY, kind, hash)
+          }
         }
       }
     }
+  }
+
+  private drawAuthoredTerrainProp(x: number, y: number, kind: 'tree' | 'thorn' | 'ruin' | 'grass' | 'stones', seed: number) {
+    const context = this.context
+    const index = kind === 'tree' ? 0
+      : kind === 'thorn' ? 1
+        : kind === 'ruin' ? (seed > 0.89 ? 2 : 5)
+          : kind === 'grass' ? 3
+            : seed > 0.525 ? 4 : 6
+    const size = index === 0 ? 216
+      : index === 1 ? 192
+        : index === 2 || index === 5 || index === 4 ? 132
+          : 78
+    context.save()
+    context.translate(x, y)
+    context.scale(1, 1 / WORLD_Y_SCALE)
+    this.drawAtlasSprite(this.terrainPropAtlas, 4, 2, index, 0, -size / 2, size, size, 0, true, seed < 0.5)
+    context.restore()
+  }
+
+  private drawTerrainProp(mapId: MapDefinition['id'], x: number, y: number, kind: 'tree' | 'thorn' | 'ruin' | 'grass' | 'stones', seed: number) {
+    const context = this.context
+    const u = PIXEL_SCALE
+    const ember = mapId === 'emberfall'
+    const dungeon = mapId === 'reliquary'
+    const shadow = dungeon ? '#05060a' : ember ? '#090403' : '#010b08'
+    const greenDark = ember ? '#4b2018' : dungeon ? '#242633' : '#294f18'
+    const green = ember ? '#8b3825' : dungeon ? '#4b4e62' : '#5f8c1d'
+    const greenLight = ember ? '#c45230' : dungeon ? '#76798c' : '#86aa25'
+    const barkDark = ember ? '#381611' : '#42281d'
+    const bark = ember ? '#7a2c1f' : '#74432b'
+    const barkLight = ember ? '#b2472d' : '#a66a3d'
+    const block = (left: number, top: number, width: number, height: number, color: string, outline = false) => {
+      if (outline) {
+        context.fillStyle = shadow
+        context.fillRect((left - 1) * u, (top - 1) * u, (width + 2) * u, (height + 2) * u)
+      }
+      context.fillStyle = color
+      context.fillRect(left * u, top * u, width * u, height * u)
+    }
+    context.save()
+    context.translate(x, y)
+    context.scale(1, 1 / WORLD_Y_SCALE)
+    if (kind === 'grass') {
+      block(-4, 1, 9, 2, shadow)
+      block(-3, -3, 1, 5, greenDark)
+      block(-1, -6, 1, 8, green)
+      block(1, -4, 1, 6, greenLight)
+      block(3, -2, 1, 4, greenDark)
+      block(-4, -2, 2, 1, green)
+      block(1, -3, 3, 1, green)
+    } else if (kind === 'stones') {
+      const pale = dungeon ? '#737685' : '#68776e'
+      block(-4, 0, 3, 2, pale, true)
+      block(1, -2, 4, 2, pale, true)
+      if (seed > 0.49) block(-1, -4, 2, 2, dungeon ? '#9999a4' : '#859188', true)
+    } else if (kind === 'ruin') {
+      const mid = dungeon ? '#525566' : '#525a56'
+      const high = dungeon ? '#8b8d99' : '#858b83'
+      block(-7, 2, 15, 2, shadow)
+      block(-6, -2, 5, 4, mid, true)
+      block(-5, -2, 3, 1, high)
+      block(0, 0, 7, 2, mid, true)
+      block(1, 0, 4, 1, high)
+      block(3, -4, 3, 4, mid, true)
+      block(4, -4, 2, 1, high)
+    } else if (kind === 'thorn') {
+      block(-9, 2, 19, 2, shadow)
+      const thorn = ember ? '#9c3525' : '#8f3b29'
+      const thornLight = ember ? '#f06436' : '#d95737'
+      for (let step = -8; step <= 7; step += 3) {
+        block(step, -1 - Math.abs(step % 4), 4, 1, barkDark, true)
+        block(step + 1, -4 - Math.abs(step % 3), 1, 4, thorn)
+        block(step + 1, -5 - Math.abs(step % 3), 1, 1, thornLight)
+      }
+      block(-7, -7, 14, 1, thorn)
+      block(-8, -7, 1, 2, thornLight)
+      block(7, -7, 1, 2, thornLight)
+    } else {
+      block(-8, 3, 17, 3, shadow)
+      block(-2, -15, 4, 18, barkDark, true)
+      block(-1, -14, 2, 15, bark)
+      block(-8, -11, 8, 3, barkDark, true)
+      block(-7, -11, 6, 1, barkLight)
+      block(1, -9, 8, 3, barkDark, true)
+      block(2, -9, 6, 1, barkLight)
+      block(-6, -17, 2, 7, barkDark)
+      block(5, -15, 2, 7, barkDark)
+      block(-2, -20, 2, 7, bark)
+    }
+    context.restore()
   }
 
   private drawWalls(map: MapDefinition) {
     if (map.walls.length === 0) return
     const context = this.context
-    const textureReady = this.biomeTextureAtlas.complete && this.biomeTextureAtlas.naturalWidth > 0
-    const sourceWidth = this.biomeTextureAtlas.naturalWidth / 2
-    const sourceHeight = this.biomeTextureAtlas.naturalHeight / 2
     for (const wall of map.walls) {
       const left = wall.x - wall.width / 2
       const top = wall.y - wall.height / 2
-      context.fillStyle = 'rgba(0,0,0,.72)'
-      context.fillRect(left + 12, top + 12, wall.width, wall.height)
-      context.fillStyle = '#111319'
+      context.fillStyle = '#030408'
+      context.fillRect(left + 18, top + 18, wall.width, wall.height)
+      context.fillStyle = '#171920'
       context.fillRect(left, top, wall.width, wall.height)
       context.save()
       context.beginPath()
       context.rect(left, top, wall.width, wall.height)
       context.clip()
-      if (textureReady) {
-        context.globalAlpha = 0.74
-        context.imageSmoothingEnabled = false
-        for (let x = left; x < left + wall.width; x += 128) {
-          for (let y = top; y < top + wall.height; y += 128) {
-            context.drawImage(this.biomeTextureAtlas, sourceWidth, sourceHeight, sourceWidth, sourceHeight, x, y, 128, 128)
-          }
+      const brickWidth = 54
+      const brickHeight = 36
+      for (let row = 0, y = top; y < top + wall.height; row += 1, y += brickHeight) {
+        const offset = row % 2 === 0 ? 0 : -brickWidth / 2
+        for (let x = left + offset; x < left + wall.width; x += brickWidth) {
+          context.fillStyle = '#05060a'
+          context.fillRect(x + 3, y + 3, brickWidth - 6, brickHeight - 6)
+          context.fillStyle = row % 3 === 0 ? '#4d4f58' : '#3b3d47'
+          context.fillRect(x + 6, y + 6, brickWidth - 12, brickHeight - 12)
+          context.fillStyle = '#777983'
+          context.fillRect(x + 6, y + 6, brickWidth - 18, PIXEL_SCALE)
         }
       }
-      context.fillStyle = 'rgba(5,7,10,.3)'
-      context.fillRect(left, top, wall.width, wall.height)
       context.restore()
-      context.strokeStyle = 'rgba(201,185,255,.32)'
-      context.lineWidth = 2
-      context.strokeRect(left + 1, top + 1, Math.max(0, wall.width - 2), Math.max(0, wall.height - 2))
-      context.strokeStyle = 'rgba(242,212,121,.14)'
-      context.lineWidth = 1
-      context.strokeRect(left + 5, top + 5, Math.max(0, wall.width - 10), Math.max(0, wall.height - 10))
+      context.fillStyle = '#090a0f'
+      context.fillRect(left, top, wall.width, PIXEL_SCALE)
+      context.fillRect(left, top, PIXEL_SCALE, wall.height)
+      context.fillStyle = '#8b8d97'
+      context.fillRect(left + PIXEL_SCALE, top + PIXEL_SCALE, Math.max(0, wall.width - PIXEL_SCALE * 2), PIXEL_SCALE)
     }
   }
 
   private drawStructures(structures: StructureState[]) {
     const context = this.context
-    for (const structure of structures) {
+    for (const originalStructure of structures) {
+      const structure = { ...originalStructure, x: this.snapX(originalStructure.x), y: this.snapY(originalStructure.y) }
       const pulse = 0.5 + Math.sin(performance.now() / 620 + structure.id) * 0.5
       const art = STRUCTURE_ART[structure.type]
       if (this.structureAtlas.complete && this.structureAtlas.naturalWidth > 0) {
         context.fillStyle = 'rgba(0,0,0,.55)'
-        context.fillRect(structure.x - art.size * 0.34 + 12, structure.y + art.size * 0.2, art.size * 0.68, 12)
-        this.drawAtlasSprite(this.structureAtlas, 3, 3, art.index, structure.x, structure.y, art.size, art.size, 0, true)
+        context.fillRect(structure.x - art.size * 0.25, structure.y, art.size * 0.5, 12)
+        context.save()
+        context.translate(structure.x, structure.y)
+        context.scale(1, 1 / WORLD_Y_SCALE)
+        this.drawAtlasSprite(this.structureAtlas, 3, 3, art.index, 0, -art.size / 2, art.size, art.size, 0, true)
+        context.restore()
         if (structure.effect === 'heal') this.drawHeartCrystal(structure, art.color, pulse)
         continue
       }
@@ -328,7 +439,7 @@ export class GameRenderer {
     }
     this.drawHeartIcon(
       structure.x,
-      structure.y - 7 - (structure.crystalReady ? pulse * 3 : 0),
+      structure.y - 66 - (structure.crystalReady ? pulse * 3 : 0),
       structure.crystalReady ? 22 : 14,
       structure.crystalReady ? 1 : progress,
       structure.crystalReady ? '#ef718e' : `rgb(${color})`,
@@ -340,8 +451,10 @@ export class GameRenderer {
     const context = this.context
     for (const pickup of snapshot.pickups) {
       const pulse = 3 + Math.sin(performance.now() / 180 + pickup.id) * 1.2
+      const x = this.snapX(pickup.x)
+      const y = this.snapY(pickup.y)
       context.save()
-      context.translate(pickup.x, pickup.y)
+      context.translate(x, y)
       context.rotate(Math.PI / 4)
       context.fillStyle = '#b6a5ff'
       context.fillRect(-pulse, -pulse, pulse * 2, pulse * 2)
@@ -352,8 +465,8 @@ export class GameRenderer {
   private drawProjectiles(snapshot: GameSnapshot, predictionSeconds: number) {
     const context = this.context
     for (const projectile of snapshot.projectiles) {
-      const x = projectile.x + projectile.vx * predictionSeconds
-      const y = projectile.y + projectile.vy * predictionSeconds
+      const x = this.snapX(projectile.x + projectile.vx * predictionSeconds)
+      const y = this.snapY(projectile.y + projectile.vy * predictionSeconds)
       const angle = Math.atan2(projectile.vy * WORLD_Y_SCALE, projectile.vx)
       const block = PIXEL_SCALE
       context.save()
@@ -388,8 +501,8 @@ export class GameRenderer {
     for (const enemy of enemies) {
       const strength = bossWarningStrength(enemy)
       if (strength <= 0) continue
-      const x = enemy.x + enemy.vx * predictionSeconds
-      const y = enemy.y + enemy.vy * predictionSeconds
+      const x = this.snapX(enemy.x + enemy.vx * predictionSeconds)
+      const y = this.snapY(enemy.y + enemy.vy * predictionSeconds)
       const facing = Math.hypot(enemy.vx, enemy.vy) > 1 ? Math.atan2(enemy.vy, enemy.vx) : (enemy.dashAngle ?? 0)
       const color = BOSS_COLORS[enemy.type] ?? '#ef718e'
       const pulse = 0.45 + Math.sin(performance.now() / 65) * 0.18
@@ -422,8 +535,8 @@ export class GameRenderer {
   private drawEnemies(enemies: EnemyState[], predictionSeconds: number) {
     const context = this.context
     for (const enemy of enemies) {
-      const x = enemy.x + enemy.vx * predictionSeconds
-      const y = enemy.y + enemy.vy * predictionSeconds
+      const x = this.snapX(enemy.x + enemy.vx * predictionSeconds)
+      const y = this.snapY(enemy.y + enemy.vy * predictionSeconds)
       const burning = enemy.burn > 0
       const color = burning ? '#ff735c' : enemy.slow > 0 ? '#9bd6ff' : '#e8eee7'
       const boss = isBoss(enemy.type)
@@ -432,8 +545,10 @@ export class GameRenderer {
       if (movement > 0.1) this.enemyFacing.set(enemy.id, facing)
       const stride = Math.sin(performance.now() / 105 + enemy.id * 1.73)
       const bob = movement > 1 ? (stride > 0 ? PIXEL_SCALE : 0) : 0
-      const visualHeight = this.drawPixelEnemy(enemy, x, y - bob, facing)
-      if (boss) this.drawBossIdentity(enemy, x, y, facing, enemy.finale ? 194 : 174)
+      const visualHeight = boss
+        ? this.drawBossEnemy(enemy, x, y - bob, facing)
+        : this.drawAmbientEnemy(enemy, x, y - bob, facing)
+      if (boss) this.drawBossIdentity(enemy, x, y, facing)
       if (boss) {
         context.fillStyle = BOSS_COLORS[enemy.type] ?? '#ef718e'
         const bossMarker = enemy.finale ? 12 : 6
@@ -454,6 +569,62 @@ export class GameRenderer {
         this.drawBar(x - barWidth / 2, y - (visualHeight + 7) / WORLD_Y_SCALE, barWidth, 5, enemy.health / enemy.maxHealth, BOSS_COLORS[enemy.type] ?? '#ef718e')
       }
     }
+  }
+
+  private drawAmbientEnemy(enemy: EnemyState, x: number, y: number, facing: number): number {
+    const index = AMBIENT_ENEMY_INDEX[enemy.type]
+    if (index === undefined || !this.enemySpriteAtlas.complete || this.enemySpriteAtlas.naturalWidth <= 0) {
+      return this.drawPixelEnemy(enemy, x, y, facing)
+    }
+    const context = this.context
+    const spriteSize = 96
+    context.fillStyle = 'rgba(0,0,0,.72)'
+    context.fillRect(x - 24, y, 48, PIXEL_SCALE)
+    context.save()
+    context.translate(x, y)
+    context.scale(1, 1 / WORLD_Y_SCALE)
+    this.drawAtlasSprite(this.enemySpriteAtlas, 4, 2, index, 0, -spriteSize / 2, spriteSize, spriteSize, 0, true, Math.cos(facing) < 0)
+    if (enemy.burn > 0) {
+      context.fillStyle = '#ff633f'
+      context.fillRect(-18, -72, 6, 12)
+      context.fillStyle = '#ffb14b'
+      context.fillRect(12, -66, 6, 6)
+    }
+    if (enemy.slow > 0) {
+      context.fillStyle = '#9bdcff'
+      context.fillRect(-24, -6, 12, 6)
+      context.fillRect(12, -6, 12, 6)
+    }
+    context.restore()
+    return 90
+  }
+
+  private drawBossEnemy(enemy: EnemyState, x: number, y: number, facing: number): number {
+    const index = BOSS_SPRITE_INDEX[enemy.type]
+    if (index === undefined || !this.bossSpriteAtlas.complete || this.bossSpriteAtlas.naturalWidth <= 0) {
+      return this.drawPixelEnemy(enemy, x, y, facing)
+    }
+    const context = this.context
+    const spriteSize = enemy.finale ? 168 : 144
+    context.fillStyle = 'rgba(0,0,0,.78)'
+    context.fillRect(x - spriteSize * 0.34, y, spriteSize * 0.68, PIXEL_SCALE * 2)
+    context.save()
+    context.translate(x, y)
+    context.scale(1, 1 / WORLD_Y_SCALE)
+    this.drawAtlasSprite(this.bossSpriteAtlas, 4, 2, index, 0, -spriteSize / 2, spriteSize, spriteSize, 0, true, Math.cos(facing) < 0)
+    if (enemy.burn > 0) {
+      context.fillStyle = '#ff633f'
+      context.fillRect(-36, -spriteSize + 6, 12, 18)
+      context.fillStyle = '#ffb14b'
+      context.fillRect(24, -spriteSize + 18, 6, 12)
+    }
+    if (enemy.slow > 0) {
+      context.fillStyle = '#9bdcff'
+      context.fillRect(-42, -6, 24, 6)
+      context.fillRect(18, -6, 24, 6)
+    }
+    context.restore()
+    return spriteSize - 12
   }
 
   private drawPixelEnemy(enemy: EnemyState, x: number, y: number, facing: number): number {
@@ -550,29 +721,13 @@ export class GameRenderer {
     return visualHeight
   }
 
-  private drawBossIdentity(enemy: EnemyState, x: number, y: number, facing: number, size: number) {
+  private drawBossIdentity(enemy: EnemyState, x: number, y: number, facing: number) {
     const context = this.context
     context.save()
     context.translate(x, y)
     const pulse = Math.sin(enemy.phase * 3) * 3
-    if (enemy.type === 'graveknight') {
-      context.rotate(facing)
-      context.strokeStyle = '#f8e8ae'
-      context.lineWidth = PIXEL_SCALE
-      context.lineCap = 'square'
-      context.beginPath()
-      context.moveTo(size * 0.22, 0)
-      context.lineTo(size * 0.9, 0)
-      context.stroke()
-      context.fillStyle = '#fff5c8'
-      context.fillRect(size * 0.88, -PIXEL_SCALE / 2, PIXEL_SCALE, PIXEL_SCALE)
-      context.strokeStyle = '#b98f45'
-      context.lineWidth = PIXEL_SCALE
-      context.beginPath()
-      context.moveTo(size * 0.2, -18)
-      context.lineTo(size * 0.2, 18)
-      context.stroke()
-    }
+    // Graveknight's complete blade is authored inside the atlas cell so it can
+    // never be clipped or detach from the body as the boss changes direction.
     if (enemy.type === 'void-hart') {
       context.rotate(facing)
       context.strokeStyle = '#48e1d0'
@@ -628,18 +783,20 @@ export class GameRenderer {
     for (const companion of companions) {
       const owner = players.find((player) => player.id === companion.ownerId)
       if (!owner || owner.eliminated) continue
-      const x = companion.x + companion.vx * predictionSeconds
-      const y = companion.y + companion.vy * predictionSeconds
-      const size = companion.kind === 'mercy-moth' || companion.kind === 'sunbird' || companion.kind === 'gravewing' ? 58
-        : companion.kind === 'aegis-hound' || companion.kind === 'thornling' ? 52 : 46
+      const x = this.snapX(companion.x + companion.vx * predictionSeconds)
+      const y = this.snapY(companion.y + companion.vy * predictionSeconds)
+      const size = companion.kind === 'mercy-moth' || companion.kind === 'sunbird' || companion.kind === 'gravewing' ? 72
+        : companion.kind === 'aegis-hound' || companion.kind === 'thornling' ? 96 : 84
       context.save()
       context.fillStyle = 'rgba(0,0,0,.38)'
       context.beginPath()
-      context.ellipse(x, y + size * 0.2, size * 0.22, size * 0.08, 0, 0, TAU)
+      context.ellipse(x, y + PIXEL_SCALE, size * 0.24, size * 0.08, 0, 0, TAU)
       context.fill()
+      context.translate(x, y)
+      context.scale(1, 1 / WORLD_Y_SCALE)
       this.drawAtlasSprite(
         this.companionSpriteAtlas, 4, 2, COMPANION_SPRITE_INDEX[companion.kind],
-        x, y - 3, size, size, 0, true, Math.cos(companion.aim) < 0,
+        0, -size / 2, size, size, 0, true, Math.cos(companion.aim) < 0,
       )
       context.restore()
     }
@@ -650,8 +807,8 @@ export class GameRenderer {
     for (const player of players) {
       if (player.eliminated) continue
       const prediction = player.downed ? 0 : predictionSeconds
-      const x = player.x + player.vx * prediction
-      const y = player.y + player.vy * prediction
+      const x = this.snapX(player.x + player.vx * prediction)
+      const y = this.snapY(player.y + player.vy * prediction)
       if (player.character === 'bastion' && !player.downed) {
         const radius = player.awakened ? 300 : 150
         context.fillStyle = 'rgba(116, 216, 194, .025)'
@@ -674,6 +831,7 @@ export class GameRenderer {
       }
       if (player.specialPulse > 0 && !player.downed) this.drawSpecialPulse(player, x, y)
 
+      if (this.drawAuthoredHunter(player, x, y, localPlayerId)) continue
       if (this.drawStylizedHunter(player, x, y, localPlayerId)) continue
 
       if (this.hunterSpriteAtlas.complete && this.hunterSpriteAtlas.naturalWidth > 0) {
@@ -795,6 +953,62 @@ export class GameRenderer {
       if (player.downed) this.drawBar(x - 21, y - 20, 42, 3, player.reviveProgress / 2.2, '#f2d479')
       this.drawLabel(x, y + 31, `${player.name}${player.awakened ? ' ✦' : ''}`, player.id === localPlayerId ? '#f5f1de' : '#b8c4bd')
     }
+  }
+
+  private drawAuthoredHunter(player: PlayerState, x: number, y: number, localPlayerId: string): boolean {
+    const index = PIXEL_HUNTER_INDEX[player.character]
+    if (index === undefined || !this.hunterSpriteAtlas.complete || this.hunterSpriteAtlas.naturalWidth <= 0) return false
+    const context = this.context
+    const local = player.id === localPlayerId
+    const moving = !player.downed && Math.hypot(player.vx, player.vy) > 8
+    const stride = moving && Math.sin(performance.now() / 92 + index * 1.71) > 0 ? PIXEL_SCALE : 0
+    const recoil = player.fireCooldown > 0 && !player.downed ? PIXEL_SCALE : 0
+    const screenAim = Math.atan2(Math.sin(player.aim) * WORLD_Y_SCALE, Math.cos(player.aim))
+    const flip = Math.cos(screenAim) < 0
+    const spriteX = x - Math.cos(player.aim) * recoil
+    const spriteY = y - Math.sin(player.aim) * recoil - stride
+
+    context.fillStyle = 'rgba(0,0,0,.72)'
+    context.fillRect(x - 30, y, 60, PIXEL_SCALE)
+    if (local && !player.downed) {
+      context.fillStyle = player.color
+      context.fillRect(x - PIXEL_SCALE / 2, y + PIXEL_SCALE, PIXEL_SCALE, PIXEL_SCALE)
+    }
+
+    context.save()
+    context.translate(spriteX, spriteY)
+    context.scale(1, 1 / WORLD_Y_SCALE)
+    context.globalAlpha = player.downed ? 0.45 : 1
+    this.drawAtlasSprite(this.hunterSpriteAtlas, 4, 2, index, 0, -60, 96, 120, 0, true, flip)
+
+    if (!player.downed && this.weaponSpriteAtlas.complete && this.weaponSpriteAtlas.naturalWidth > 0) {
+      context.save()
+      context.translate(0, -45)
+      context.rotate(screenAim)
+      context.translate(21 - recoil, 0)
+      this.drawAtlasSprite(this.weaponSpriteAtlas, 5, 2, WEAPON_SPRITE_INDEX[player.weapon], 0, 0, 72, 36, 0, true)
+      if (player.fireCooldown > 0 && player.weapon !== 'sword') {
+        context.fillStyle = '#ffad3f'
+        context.fillRect(32, -6, 12, 12)
+        context.fillStyle = '#fff0a8'
+        context.fillRect(38, -3, 12, 6)
+      }
+      context.restore()
+    }
+    context.restore()
+
+    if (player.downed) {
+      context.strokeStyle = '#ef718e'
+      context.lineWidth = PIXEL_SCALE
+      context.beginPath()
+      context.moveTo(x - 12, y - 36)
+      context.lineTo(x + 12, y - 12)
+      context.moveTo(x + 12, y - 36)
+      context.lineTo(x - 12, y - 12)
+      context.stroke()
+      this.drawBar(x - 24, y - 78, 48, PIXEL_SCALE, player.reviveProgress / 2.2, '#f2d479')
+    }
+    return true
   }
 
   private drawStylizedHunter(player: PlayerState, x: number, y: number, localPlayerId: string): boolean {
@@ -1001,20 +1215,22 @@ export class GameRenderer {
     const context = this.context
     for (const effect of this.effects) {
       effect.life -= dt
+      const x = this.snapX(effect.x)
+      const y = this.snapY(effect.y)
       const progress = Math.max(0, effect.life) / (effect.type === 'hurt' ? 0.32 : 0.2)
       const color = effect.type === 'hurt' ? '239, 113, 142' : '242, 212, 121'
       context.strokeStyle = `rgba(${color}, ${progress})`
       context.lineWidth = 2
       context.beginPath()
-      context.arc(effect.x, effect.y, 9 + (1 - progress) * 14, 0, TAU)
+      context.arc(x, y, 9 + (1 - progress) * 14, 0, TAU)
       context.stroke()
       for (let spark = 0; spark < 5; spark += 1) {
         const angle = (spark / 5) * TAU + effect.x * 0.013
         const inner = 5 + (1 - progress) * 7
         const outer = inner + 6 * progress
         context.beginPath()
-        context.moveTo(effect.x + Math.cos(angle) * inner, effect.y + Math.sin(angle) * inner)
-        context.lineTo(effect.x + Math.cos(angle) * outer, effect.y + Math.sin(angle) * outer)
+        context.moveTo(x + Math.cos(angle) * inner, y + Math.sin(angle) * inner)
+        context.lineTo(x + Math.cos(angle) * outer, y + Math.sin(angle) * outer)
         context.stroke()
       }
     }
@@ -1023,24 +1239,19 @@ export class GameRenderer {
 
   private drawVignette() {
     const context = this.context
-    context.fillStyle = 'rgba(0,3,2,.56)'
-    context.fillRect(0, 0, this.width, 3)
-    context.fillRect(0, this.height - 3, this.width, 3)
-    context.fillRect(0, 0, 3, this.height)
-    context.fillRect(this.width - 3, 0, 3, this.height)
-    context.fillStyle = 'rgba(0,3,2,.28)'
-    context.fillRect(3, 3, 3, 3)
-    context.fillRect(this.width - 6, 3, 3, 3)
-    context.fillRect(3, this.height - 6, 3, 3)
-    context.fillRect(this.width - 6, this.height - 6, 3, 3)
+    context.fillStyle = 'rgba(0,3,2,.18)'
+    context.fillRect(0, 0, this.width, 1)
+    context.fillRect(0, this.height - 1, this.width, 1)
+    context.fillRect(0, 0, 1, this.height)
+    context.fillRect(this.width - 1, 0, 1, this.height)
   }
 
   private drawEdgeMarkers(players: PlayerState[], localPlayerId: string) {
     const context = this.context
     for (const player of players) {
       if (player.id === localPlayerId || player.eliminated) continue
-      const sx = (player.x - this.cameraX) / this.displayScale + this.width / 2
-      const sy = (player.y - this.cameraY) * WORLD_Y_SCALE / this.displayScale + this.height / 2
+      const sx = (player.x - this.renderCameraX) / this.displayScale + this.width / 2
+      const sy = (player.y - this.renderCameraY) * WORLD_Y_SCALE / this.displayScale + this.height / 2
       if (sx > 8 && sx < this.width - 8 && sy > 8 && sy < this.height - 8) continue
       const angle = Math.atan2(sy - this.height / 2, sx - this.width / 2)
       const radiusX = this.width / 2 - 6
