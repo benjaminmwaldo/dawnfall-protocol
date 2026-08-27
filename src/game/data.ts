@@ -59,6 +59,14 @@ export const CHARACTERS: CharacterDefinition[] = [
   { id: 'zahra', name: 'Zahra', epithet: 'The Event Horizon', glyph: '◉', color: '#e8b66f', description: 'Bends whole packs into one fatal point.', startingHearts: 5, baseAbility: 'Redshift — shots deal more damage to exposed boss weak points.', activeAbility: 'Singularity — drag nearby horrors inward and crush them.', activeCooldown: 13, awakening: 'Black Sun — Singularity doubles its reach and collapse damage.', origin: 'Lebanese · 34', build: 'Tall, wiry, narrow-shouldered', visualIdentity: 'Long diamond-shaped face, tawny skin, amber eyes, strong brows, rounded straight nose, high black curl-tail and bronze gravitic instruments.', lore: 'Zahra maintained Beirut’s orbital elevator counterweights. When the skyhook fell, she learned to make gravity answer to human hands.' },
 ]
 
+const PLAYABLE_CHARACTER_IDS = new Set<CharacterId>([
+  'vesper', 'cinder', 'bastion', 'warden', 'nyx', 'tempest', 'briar', 'seraph',
+])
+
+// Keep retired and future hunters fully defined for later development while
+// exposing only the currently approved cast to selection and random rolls.
+export const PLAYABLE_CHARACTERS = CHARACTERS.filter((character) => PLAYABLE_CHARACTER_IDS.has(character.id))
+
 export const WEAPONS: WeaponDefinition[] = [
   { id: 'revolver', name: 'Oathkeeper', glyph: '⌁', description: 'Six precise shots. High damage and clean criticals.', damage: 30, fireRate: 3.1, projectiles: 1, magazine: 6, reload: 1.05, speed: 650, spread: 0.025, pierce: 0, chain: 0, life: 1.25, radius: 4.5 },
   { id: 'scattergun', name: 'Gravesong', glyph: '≋', description: 'Five short-range shells carve a wide killing fan.', damage: 12, fireRate: 1.25, projectiles: 5, magazine: 4, reload: 1.3, speed: 530, spread: 0.5, pierce: 0, chain: 0, life: 0.58, radius: 4.2 },

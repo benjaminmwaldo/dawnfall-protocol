@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CHARACTERS, UPGRADES, WEAPONS } from '../src/game/data'
+import { CHARACTERS, PLAYABLE_CHARACTERS, UPGRADES, WEAPONS } from '../src/game/data'
 import { bossWarningStrength, bossWeakPointIsOpen } from '../src/game/boss'
 import { DIFFICULTIES } from '../src/game/difficulty'
 import { GameEngine } from '../src/game/engine'
@@ -18,6 +18,16 @@ const clearDraftInputDelay = (engine: GameEngine, inputs: ReadonlyMap<string, In
 }
 
 describe('GameEngine', () => {
+  it('keeps the approved cast selectable while preserving retired character data', () => {
+    expect(PLAYABLE_CHARACTERS.map((character) => character.id)).toEqual([
+      'vesper', 'cinder', 'bastion', 'warden', 'nyx', 'tempest', 'briar', 'seraph',
+    ])
+    expect(CHARACTERS.map((character) => character.id)).toEqual([
+      'vesper', 'cinder', 'bastion', 'warden', 'nyx', 'tempest', 'briar', 'seraph',
+      'rapunsel', 'eira', 'mara', 'zahra',
+    ])
+  })
+
   it('supports four distinct synchronized threat levels', () => {
     expect(DIFFICULTIES.map((difficulty) => difficulty.id)).toEqual(['story', 'standard', 'nightmare', 'apocalypse'])
     const story = new GameEngine([player], 240, 88, 'gloamreach', 'story')

@@ -1,5 +1,5 @@
 import './style.css'
-import { BOSS_NAMES, CHARACTERS, PLAYER_COLORS, UPGRADES, WEAPONS, characterById, isBoss, teamBuffById, upgradeById, weaponById } from './game/data'
+import { BOSS_NAMES, PLAYABLE_CHARACTERS, PLAYER_COLORS, UPGRADES, WEAPONS, characterById, isBoss, teamBuffById, upgradeById, weaponById } from './game/data'
 import { GameEngine } from './game/engine'
 import { DIFFICULTIES, difficultyById } from './game/difficulty'
 import { HEART_REGEN_SECONDS, HEART_VALUE, heartFill, heartSlots } from './game/health'
@@ -299,13 +299,13 @@ class DawnfallApp {
           <section class="loadout-column">
             <div class="section-heading"><span>01</span><div><h2>CHOOSE YOUR HUNTER</h2><p>Base abilities define your role before the first perk drops.</p></div><button class="random-loadout-button" data-random-character data-testid="random-character">✦ RANDOM HUNTER</button></div>
             <div class="character-grid">
-              ${CHARACTERS.map((character) => `
+              ${PLAYABLE_CHARACTERS.map((character) => `
                 <button class="selection-card character-card ${this.localConfig.character === character.id ? 'selected' : ''}" data-character="${character.id}" style="--accent:${character.color}">
                   <span class="portrait-art" style="${portraitStyle(character.id)}"></span>
                   <span class="portrait-sigil">${character.glyph}</span>
                   <span class="card-copy"><small>${character.epithet}</small><strong>${character.name}</strong><em>${character.description}</em><span class="identity-note">${character.origin} · ${character.build}</span><b>${character.baseAbility}</b><i><kbd>ABILITY</kbd> ${character.activeAbility}</i></span>
                 </button>`).join('')}
-              ${Array.from({ length: 2 }, (_, index) => `<article class="selection-card character-card coming-soon" aria-label="Future hunter slot"><span class="future-mark">0${CHARACTERS.length + index + 1}</span><span class="card-copy"><small>THE ROSTER GROWS</small><strong>COMING SOON</strong><em>Another survivor is broadcasting from beyond the exclusion line.</em></span></article>`).join('')}
+              ${Array.from({ length: 2 }, (_, index) => `<article class="selection-card character-card coming-soon" aria-label="Future hunter slot"><span class="future-mark">0${PLAYABLE_CHARACTERS.length + index + 1}</span><span class="card-copy"><small>THE ROSTER GROWS</small><strong>COMING SOON</strong><em>Another survivor is broadcasting from beyond the exclusion line.</em></span></article>`).join('')}
             </div>
             <div class="section-heading compact"><span>02</span><div><h2>CHOOSE YOUR WEAPON</h2><p>Every hunter can carry every weapon.</p></div><button class="random-loadout-button" data-random-weapon data-testid="random-weapon">⌁ RANDOM WEAPON</button></div>
             <div class="weapon-grid">
@@ -369,7 +369,7 @@ class DawnfallApp {
       this.updateLocalLoadout()
     }))
     document.querySelector<HTMLElement>('[data-random-character]')?.addEventListener('click', () => {
-      const choices = CHARACTERS.filter((character) => character.id !== this.localConfig.character)
+      const choices = PLAYABLE_CHARACTERS.filter((character) => character.id !== this.localConfig.character)
       this.localConfig.character = choices[Math.floor(Math.random() * choices.length)].id
       this.updateLocalLoadout()
     })
