@@ -2,6 +2,18 @@
 
 This is the cumulative implementation checklist for playtest feedback. New requests should be added here before a release is deployed.
 
+## Current visual/UI pass
+
+- [x] Rebuild the entire live-combat art layer as authentic 8-bit pixel art with one shared palette, pixel scale, and 3/4 camera
+- [x] Redesign the in-game hunter models in that 8-bit system through gameplay-scale visual iteration before applying it to the cast
+- [x] Redesign the in-game gun and sword models in the same 8-bit system with correct hand placement, compact proportions, and clear aim alignment
+- [x] Replace painterly combat terrain, structures, ambient monsters, and bosses with matching 8-bit tiles and sprites
+- [ ] Redo the victory-screen art using only the newly approved character designs
+- [x] Replace the upgrade screen's two-image composition with one integrated full-bleed splash per scene
+- [x] Make the character-select detail sidebar scroll independently from the hunter grid
+- [x] Re-check and repair the Graveknight sword crop at every facing angle and boss scale
+- [x] Clean up the in-game HUD with larger symbols and minimal or no instructional text
+
 ## Core run
 
 - [x] One-to-four-player survival run with active aiming, firing, ammunition, and reloads
@@ -12,8 +24,8 @@ This is the cumulative implementation checklist for playtest feedback. New reque
 
 ## Hunters, weapons, and builds
 
-- [x] Nine distinct hunters with character-specific abilities, awakenings, perks, bodies, faces, portraits, and pixel sprites
-- [x] Add Rapsy as a ninth hunter with very long brown hair, a slender cute silhouette, and a circular hair-slash ability
+- [x] Seven currently approved selectable hunters with character-specific abilities, awakenings, perks, bodies, faces, portraits, and pixel sprites; hidden hunter data remains preserved
+- [x] Preserve Rapsy's very long brown hair, slender silhouette, circular hair-slash ability, perks, art, and lore while she is hidden pending redesign
 - [x] Give every hunter a shared active-ability control with a visible cooldown and consistent keyboard/touch input behavior
 - [x] Add tasteful COMING SOON hunter slots for future additions
 - [x] Keep Scarlet progressive but make her politics subtler and balanced with ordinary city life, being single, and occasional fights with her dad
@@ -26,7 +38,7 @@ This is the cumulative implementation checklist for playtest feedback. New reque
 ## Hearts, healing, and revives
 
 - [x] Player health uses minimalist hearts at the screen edge, never floating above player models
-- [x] Five-heart baseline; Bastion starts with a sixth heart
+- [x] Five-heart baseline; Ama's preserved hidden data retains her sixth-heart trait
 - [x] Enemy damage is quantized to half-heart packets; common enemies deal half a heart and heavy enemies deal more
 - [x] Every living hunter regenerates one heart every sixty seconds with a visible personal timer ring
 - [x] Healing structures charge one shared one-heart crystal every sixty seconds with a visible world-space ring

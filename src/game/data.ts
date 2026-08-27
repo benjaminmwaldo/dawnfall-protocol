@@ -60,7 +60,7 @@ export const CHARACTERS: CharacterDefinition[] = [
 ]
 
 const PLAYABLE_CHARACTER_IDS = new Set<CharacterId>([
-  'vesper', 'cinder', 'bastion', 'warden', 'nyx', 'tempest', 'briar', 'seraph',
+  'vesper', 'cinder', 'warden', 'nyx', 'tempest', 'briar', 'seraph',
 ])
 
 // Keep retired and future hunters fully defined for later development while

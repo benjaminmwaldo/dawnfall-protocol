@@ -20,7 +20,7 @@ const clearDraftInputDelay = (engine: GameEngine, inputs: ReadonlyMap<string, In
 describe('GameEngine', () => {
   it('keeps the approved cast selectable while preserving retired character data', () => {
     expect(PLAYABLE_CHARACTERS.map((character) => character.id)).toEqual([
-      'vesper', 'cinder', 'bastion', 'warden', 'nyx', 'tempest', 'briar', 'seraph',
+      'vesper', 'cinder', 'warden', 'nyx', 'tempest', 'briar', 'seraph',
     ])
     expect(CHARACTERS.map((character) => character.id)).toEqual([
       'vesper', 'cinder', 'bastion', 'warden', 'nyx', 'tempest', 'briar', 'seraph',

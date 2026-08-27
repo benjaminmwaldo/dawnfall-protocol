@@ -13,30 +13,25 @@ interface Effect {
 
 const TAU = Math.PI * 2
 export const WORLD_Y_SCALE = 0.72
+export const PIXEL_SCALE = 6
 const CHARACTER_SPRITE_INDEX: Record<PlayerState['character'], number> = { vesper: 0, cinder: 1, bastion: 2, warden: 3, nyx: 4, tempest: 5, briar: 6, seraph: 7, rapunsel: 8, eira: 9, mara: 10, zahra: 11 }
 const WEAPON_SPRITE_INDEX: Record<PlayerState['weapon'], number> = {
   revolver: 0, scattergun: 1, 'arc-rifle': 2, 'burst-carbine': 3, railgun: 4,
   'grenade-launcher': 5, flamethrower: 6, 'frost-cannon': 7, seeker: 8, sword: 9,
 }
 const COMPANION_SPRITE_INDEX: Record<CompanionState['kind'], number> = { gravewing: 0, ashkit: 1, 'aegis-hound': 2, 'mercy-moth': 3, shadecat: 4, 'storm-wisp': 5, thornling: 6, sunbird: 7 }
-const ENEMY_SPRITE_INDEX: Record<EnemyState['type'], number> = {
-  thrall: 0, skitter: 1, spitter: 2, bulwark: 3,
-  wraith: 4, charger: 5, hexer: 6, leech: 7,
-  tollkeeper: 8, broodmother: 9, graveknight: 10, 'eclipse-eye': 11,
-  'void-hart': 10, 'prism-witch': 11, 'iron-choir': 8, 'star-eater': 11,
-}
 const BOSS_COLORS: Partial<Record<EnemyState['type'], string>> = {
   tollkeeper: '#ef718e', broodmother: '#e45d82', graveknight: '#f2d479', 'eclipse-eye': '#aa86ff',
   'void-hart': '#48e1d0', 'prism-witch': '#ef8dff', 'iron-choir': '#d69468', 'star-eater': '#7f5cff',
 }
 const HUNTER_VISUALS: Record<PlayerState['character'], { skin: string; hair: string; coat: string; accent: string; build: number; height: number; hairLength: number; style: 'long' | 'bob' | 'braid' | 'ponytail' | 'shaved' | 'waves' }> = {
-  vesper: { skin: '#e8c7b2', hair: '#181a24', coat: '#34304c', accent: '#d6bcff', build: 0.88, height: 1.04, hairLength: 16, style: 'long' },
-  cinder: { skin: '#d7a17c', hair: '#481b18', coat: '#642d28', accent: '#ff8265', build: 0.98, height: 1.01, hairLength: 11, style: 'waves' },
-  bastion: { skin: '#9b5f43', hair: '#171317', coat: '#304941', accent: '#74d8c2', build: 0.86, height: 1.01, hairLength: 14, style: 'ponytail' },
-  warden: { skin: '#d9aa91', hair: '#10141c', coat: '#30304f', accent: '#b6a5ff', build: 0.82, height: 0.98, hairLength: 25, style: 'long' },
-  nyx: { skin: '#8e5d49', hair: '#151018', coat: '#342747', accent: '#9587ff', build: 0.9, height: 1.02, hairLength: 6, style: 'shaved' },
+  vesper: { skin: '#e8c7b2', hair: '#303142', coat: '#34304c', accent: '#d6bcff', build: 0.88, height: 1.04, hairLength: 16, style: 'long' },
+  cinder: { skin: '#d7a17c', hair: '#71312a', coat: '#642d28', accent: '#ff8265', build: 0.98, height: 1.01, hairLength: 11, style: 'waves' },
+  bastion: { skin: '#9b5f43', hair: '#39282f', coat: '#304941', accent: '#74d8c2', build: 0.86, height: 1.01, hairLength: 14, style: 'ponytail' },
+  warden: { skin: '#d9aa91', hair: '#29283a', coat: '#30304f', accent: '#b6a5ff', build: 0.82, height: 0.98, hairLength: 25, style: 'long' },
+  nyx: { skin: '#8e5d49', hair: '#352a42', coat: '#342747', accent: '#9587ff', build: 0.9, height: 1.02, hairLength: 6, style: 'shaved' },
   tempest: { skin: '#e5b99d', hair: '#d8dce7', coat: '#29465a', accent: '#69c9ff', build: 0.86, height: 1.06, hairLength: 14, style: 'ponytail' },
-  briar: { skin: '#dca17f', hair: '#3a1d20', coat: '#4f2738', accent: '#e45d82', build: 1.05, height: 0.99, hairLength: 18, style: 'waves' },
+  briar: { skin: '#dca17f', hair: '#6a353d', coat: '#6a2944', accent: '#e45d82', build: 1.05, height: 0.99, hairLength: 18, style: 'waves' },
   seraph: { skin: '#f2cfb5', hair: '#e7c779', coat: '#59543a', accent: '#ffd783', build: 0.84, height: 1.08, hairLength: 17, style: 'braid' },
   rapunsel: { skin: '#f1cfb7', hair: '#5b321e', coat: '#385445', accent: '#f1c48d', build: 0.75, height: 0.96, hairLength: 36, style: 'long' },
   eira: { skin: '#efd2bf', hair: '#e6d6c0', coat: '#354e61', accent: '#a9efff', build: 0.9, height: 1.08, hairLength: 14, style: 'braid' },
@@ -71,7 +66,9 @@ export class GameRenderer {
   private readonly context: CanvasRenderingContext2D
   private width = 0
   private height = 0
-  private dpr = 1
+  private cssWidth = 0
+  private cssHeight = 0
+  private displayScale = PIXEL_SCALE
   private cameraX = 0
   private cameraY = 0
   private lastFrame = performance.now()
@@ -99,12 +96,15 @@ export class GameRenderer {
 
   resize() {
     const bounds = this.canvas.getBoundingClientRect()
-    this.dpr = Math.min(2, window.devicePixelRatio || 1)
-    this.width = Math.max(320, bounds.width)
-    this.height = Math.max(240, bounds.height)
-    this.canvas.width = Math.floor(this.width * this.dpr)
-    this.canvas.height = Math.floor(this.height * this.dpr)
-    this.context.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
+    this.cssWidth = Math.max(320, bounds.width)
+    this.cssHeight = Math.max(240, bounds.height)
+    this.displayScale = this.cssWidth <= 760 ? 4 : PIXEL_SCALE
+    this.width = Math.max(80, Math.ceil(this.cssWidth / this.displayScale))
+    this.height = Math.max(64, Math.ceil(this.cssHeight / this.displayScale))
+    this.canvas.width = this.width
+    this.canvas.height = this.height
+    this.context.setTransform(1, 0, 0, 1, 0, 0)
+    this.context.imageSmoothingEnabled = false
   }
 
   render(snapshot: GameSnapshot, localPlayerId: string, focusPlayerId = localPlayerId, predictionSeconds = 0) {
@@ -122,10 +122,11 @@ export class GameRenderer {
     const map = mapById(snapshot.mapId)
     const context = this.context
     context.save()
-    context.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
+    context.setTransform(1, 0, 0, 1, 0, 0)
+    context.imageSmoothingEnabled = false
     this.drawGround(map)
     context.translate(this.width / 2, this.height / 2)
-    context.scale(1, WORLD_Y_SCALE)
+    context.scale(1 / this.displayScale, WORLD_Y_SCALE / this.displayScale)
     context.translate(-this.cameraX, -this.cameraY)
     this.drawTerrainDetails(map)
     this.drawWalls(map)
@@ -150,71 +151,100 @@ export class GameRenderer {
   aimFromVector(x: number, y: number): number { return Math.atan2(y / WORLD_Y_SCALE, x) }
 
   viewportSize(): { width: number; height: number } {
-    return { width: this.width, height: this.height }
+    return { width: this.cssWidth, height: this.cssHeight }
   }
 
   private drawGround(map: MapDefinition) {
     const context = this.context
-    context.fillStyle = map.id === 'emberfall' ? '#100908' : map.id === 'reliquary' ? '#0a0b0e' : '#07100e'
+    const palette = map.id === 'emberfall'
+      ? { base: '#180c09', dark: '#0c0706', mid: '#492019', light: '#8a3824', accent: '#d85a32' }
+      : map.id === 'reliquary'
+        ? { base: '#101117', dark: '#08090d', mid: '#272936', light: '#55586c', accent: '#8b80ba' }
+        : { base: '#062d24', dark: '#031914', mid: '#174a36', light: '#487047', accent: '#79a53f' }
+    context.fillStyle = palette.base
     context.fillRect(0, 0, this.width, this.height)
-    if (this.biomeTextureAtlas.complete && this.biomeTextureAtlas.naturalWidth > 0) {
-      const tileSize = map.id === 'reliquary' ? 512 : 627
-      const offsetX = ((-this.cameraX % tileSize) + tileSize) % tileSize - tileSize
-      const offsetY = ((-this.cameraY % tileSize) + tileSize) % tileSize - tileSize
-      const sourceWidth = this.biomeTextureAtlas.naturalWidth / 2
-      const sourceHeight = this.biomeTextureAtlas.naturalHeight / 2
-      const sourceX = (map.textureIndex % 2) * sourceWidth
-      const sourceY = Math.floor(map.textureIndex / 2) * sourceHeight
-      context.save()
-      context.globalAlpha = map.id === 'gloamreach' ? 0.55 : 0.68
-      context.imageSmoothingEnabled = false
-      for (let x = offsetX; x < this.width + tileSize; x += tileSize) {
-        for (let y = offsetY; y < this.height + tileSize; y += tileSize) {
-          context.drawImage(this.biomeTextureAtlas, sourceX, sourceY, sourceWidth, sourceHeight, x, y, tileSize, tileSize)
+    const tile = 8
+    const cameraPixelX = this.cameraX / this.displayScale
+    const cameraPixelY = this.cameraY * WORLD_Y_SCALE / this.displayScale
+    const offsetX = ((-cameraPixelX % tile) + tile) % tile - tile
+    const offsetY = ((-cameraPixelY % tile) + tile) % tile - tile
+    for (let x = offsetX; x < this.width + tile; x += tile) {
+      for (let y = offsetY; y < this.height + tile; y += tile) {
+        const gx = Math.floor((x + cameraPixelX) / tile)
+        const gy = Math.floor((y + cameraPixelY) / tile)
+        const hash = Math.abs(Math.imul(gx + 8191, 374761393) ^ Math.imul(gy + 131, 668265263)) % 97
+        if (hash % 17 === 0) {
+          context.fillStyle = palette.dark
+          context.fillRect(Math.round(x + 2), Math.round(y + 2), 4, 4)
+        } else if (hash % 11 === 0) {
+          context.fillStyle = palette.mid
+          context.fillRect(Math.round(x + 2), Math.round(y + 3), 3, 2)
+        }
+        if (map.id === 'reliquary') {
+          context.fillStyle = hash % 3 === 0 ? palette.light : palette.mid
+          context.fillRect(Math.round(x), Math.round(y), tile - 1, 1)
+          context.fillRect(Math.round(x), Math.round(y + tile - 1), tile - 1, 1)
+        } else if (hash % 19 === 0) {
+          context.fillStyle = palette.accent
+          if (hash % 2 === 0) {
+            context.fillRect(Math.round(x + 3), Math.round(y + 2), 1, 4)
+            context.fillRect(Math.round(x + 1), Math.round(y + 5), 5, 1)
+          } else {
+            context.fillRect(Math.round(x + 2), Math.round(y + 3), 4, 1)
+            context.fillRect(Math.round(x + 5), Math.round(y + 1), 1, 4)
+          }
+        } else if (hash % 5 === 0) {
+          context.fillStyle = palette.light
+          context.fillRect(Math.round(x + 2), Math.round(y + 4), 2, 1)
+          context.fillRect(Math.round(x + 5), Math.round(y + 2), 1, 1)
         }
       }
-      context.restore()
     }
-    const glow = context.createRadialGradient(this.width / 2, this.height / 2, 0, this.width / 2, this.height / 2, this.width * 0.7)
-    glow.addColorStop(0, map.id === 'emberfall' ? 'rgba(104, 44, 30, .22)' : map.id === 'reliquary' ? 'rgba(50, 47, 78, .22)' : 'rgba(31, 69, 56, .28)')
-    glow.addColorStop(0.55, map.id === 'emberfall' ? 'rgba(26, 12, 9, .12)' : 'rgba(7, 16, 14, .14)')
-    glow.addColorStop(1, 'rgba(1, 6, 5, .76)')
-    context.fillStyle = glow
-    context.fillRect(0, 0, this.width, this.height)
+    context.fillStyle = 'rgba(0, 0, 0, .16)'
+    context.fillRect(0, 0, this.width, 2)
+    context.fillRect(0, this.height - 2, this.width, 2)
+    context.fillRect(0, 0, 2, this.height)
+    context.fillRect(this.width - 2, 0, 2, this.height)
   }
 
   private drawTerrainDetails(map: MapDefinition) {
     const context = this.context
-    const left = this.cameraX - this.width / 2 - 90
-    const top = this.cameraY - this.height / 2 - 90
+    const left = this.cameraX - this.width * this.displayScale / 2 - 90
+    const top = this.cameraY - this.height * this.displayScale / WORLD_Y_SCALE / 2 - 90
     const grid = 96
     const startX = Math.floor(left / grid) * grid
     const startY = Math.floor(top / grid) * grid
-    context.lineWidth = 1
-    for (let x = startX; x < left + this.width + 180; x += grid) {
-      for (let y = startY; y < top + this.height + 180; y += grid) {
+    for (let x = startX; x < left + this.width * this.displayScale + 180; x += grid) {
+      for (let y = startY; y < top + this.height * this.displayScale / WORLD_Y_SCALE + 180; y += grid) {
         const hash = Math.abs(Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1
-        if (hash > 0.78 && map.id === 'gloamreach') {
-          context.strokeStyle = 'rgba(90, 130, 104, .15)'
-          context.beginPath()
-          context.moveTo(x - 8, y + 6)
-          context.quadraticCurveTo(x, y - 12 - hash * 10, x + 10, y + 4)
-          context.stroke()
+        if (hash > 0.992 && map.id === 'gloamreach') {
+          context.fillStyle = '#020b08'
+          context.fillRect(x - 24, y + 12, 60, 12)
+          context.fillStyle = '#46534d'
+          context.fillRect(x - 18, y, 24, 18)
+          context.fillRect(x + 12, y + 6, 24, 12)
+          context.fillStyle = '#78827a'
+          context.fillRect(x - 12, y, 12, 6)
+          context.fillRect(x + 18, y + 6, 12, 6)
+        } else if (hash > 0.78 && map.id === 'gloamreach') {
+          context.fillStyle = '#487047'
+          context.fillRect(x - 6, y, 6, 12)
+          context.fillRect(x, y - 6, 6, 18)
+          context.fillRect(x + 6, y + 6, 6, 6)
+        } else if (hash > 0.985 && map.id === 'emberfall') {
+          context.fillStyle = '#080706'
+          context.fillRect(x - 24, y + 12, 60, 18)
+          context.fillStyle = '#683022'
+          context.fillRect(x - 18, y - 6, 24, 18)
+          context.fillRect(x + 12, y, 30, 12)
+          context.fillStyle = '#b94b2b'
+          context.fillRect(x - 6, y - 6, 12, 6)
         } else if (hash < 0.08 && map.id !== 'reliquary') {
-          context.fillStyle = map.id === 'emberfall' ? 'rgba(255, 104, 64, .2)' : 'rgba(113, 138, 118, .11)'
-          context.beginPath()
-          context.arc(x, y, 2 + hash * 18, 0, TAU)
-          context.fill()
+          context.fillStyle = map.id === 'emberfall' ? '#8a3824' : '#174a36'
+          context.fillRect(x, y, 12, 6)
         }
       }
     }
-    context.strokeStyle = map.id === 'emberfall' ? 'rgba(255, 121, 93, .14)' : map.id === 'reliquary' ? 'rgba(201, 185, 255, .09)' : 'rgba(242, 212, 121, .13)'
-    context.lineWidth = 3
-    context.setLineDash([6, 18])
-    context.beginPath()
-    context.arc(0, 0, 1500, 0, TAU)
-    context.stroke()
-    context.setLineDash([])
   }
 
   private drawWalls(map: MapDefinition) {
@@ -226,13 +256,10 @@ export class GameRenderer {
     for (const wall of map.walls) {
       const left = wall.x - wall.width / 2
       const top = wall.y - wall.height / 2
-      context.save()
-      context.shadowColor = 'rgba(0,0,0,.86)'
-      context.shadowBlur = 20
-      context.shadowOffsetY = 10
+      context.fillStyle = 'rgba(0,0,0,.72)'
+      context.fillRect(left + 12, top + 12, wall.width, wall.height)
       context.fillStyle = '#111319'
       context.fillRect(left, top, wall.width, wall.height)
-      context.restore()
       context.save()
       context.beginPath()
       context.rect(left, top, wall.width, wall.height)
@@ -264,16 +291,10 @@ export class GameRenderer {
       const pulse = 0.5 + Math.sin(performance.now() / 620 + structure.id) * 0.5
       const art = STRUCTURE_ART[structure.type]
       if (this.structureAtlas.complete && this.structureAtlas.naturalWidth > 0) {
-        const glow = context.createRadialGradient(structure.x, structure.y, 4, structure.x, structure.y, structure.radius * 1.18)
-        glow.addColorStop(0, `rgba(${art.color}, ${0.13 + pulse * 0.06})`)
-        glow.addColorStop(1, `rgba(${art.color}, 0)`)
-        context.fillStyle = glow
-        context.beginPath()
-        context.arc(structure.x, structure.y, structure.radius * 1.18, 0, TAU)
-        context.fill()
+        context.fillStyle = 'rgba(0,0,0,.55)'
+        context.fillRect(structure.x - art.size * 0.34 + 12, structure.y + art.size * 0.2, art.size * 0.68, 12)
         this.drawAtlasSprite(this.structureAtlas, 3, 3, art.index, structure.x, structure.y, art.size, art.size, 0, true)
         if (structure.effect === 'heal') this.drawHeartCrystal(structure, art.color, pulse)
-        else this.drawLabel(structure.x, structure.y + structure.radius + 18, art.label, `rgb(${art.color})`)
         continue
       }
       context.fillStyle = `rgba(${art.color}, ${0.05 + pulse * 0.04})`
@@ -285,7 +306,6 @@ export class GameRenderer {
       context.stroke()
       this.drawGlyph(structure.x, structure.y + 1, structure.effect === 'heal' ? '✚' : structure.effect === 'turret' ? 'ϟ' : '✦', `rgb(${art.color})`, 19)
       if (structure.effect === 'heal') this.drawHeartCrystal(structure, art.color, pulse)
-      else this.drawLabel(structure.x, structure.y + 48, art.label, `rgb(${art.color})`)
     }
   }
 
@@ -294,21 +314,18 @@ export class GameRenderer {
     const progress = structure.crystalReady ? 1 : Math.max(0, Math.min(1, (structure.crystalCharge ?? 0) / HEAL_CRYSTAL_SECONDS))
     const ringRadius = structure.radius * 0.72
     context.save()
-    context.lineCap = 'square'
-    context.lineWidth = 4
-    context.strokeStyle = `rgba(${color}, .18)`
-    context.beginPath()
-    context.arc(structure.x, structure.y, ringRadius, -Math.PI / 2, Math.PI * 1.5)
-    context.stroke()
-    if (progress > 0) {
-      context.strokeStyle = structure.crystalReady ? '#ef718e' : `rgb(${color})`
-      context.shadowColor = structure.crystalReady ? '#ef718e' : `rgb(${color})`
-      context.shadowBlur = structure.crystalReady ? 16 : 6
-      context.beginPath()
-      context.arc(structure.x, structure.y, ringRadius, -Math.PI / 2, -Math.PI / 2 + TAU * progress)
-      context.stroke()
+    const segments = 16
+    for (let segment = 0; segment < segments; segment += 1) {
+      const angle = -Math.PI / 2 + segment / segments * TAU
+      const active = segment / segments <= progress
+      context.fillStyle = active ? (structure.crystalReady ? '#ef718e' : `rgb(${color})`) : 'rgba(3,8,7,.72)'
+      context.fillRect(
+        Math.round((structure.x + Math.cos(angle) * ringRadius) / PIXEL_SCALE) * PIXEL_SCALE - PIXEL_SCALE / 2,
+        Math.round((structure.y + Math.sin(angle) * ringRadius) / PIXEL_SCALE) * PIXEL_SCALE - PIXEL_SCALE / 2,
+        PIXEL_SCALE,
+        PIXEL_SCALE,
+      )
     }
-    context.shadowBlur = structure.crystalReady ? 18 : 0
     this.drawHeartIcon(
       structure.x,
       structure.y - 7 - (structure.crystalReady ? pulse * 3 : 0),
@@ -317,8 +334,6 @@ export class GameRenderer {
       structure.crystalReady ? '#ef718e' : `rgb(${color})`,
     )
     context.restore()
-    const status = structure.crystalReady ? 'READY · +1 HEART' : `${Math.ceil(HEAL_CRYSTAL_SECONDS - (structure.crystalCharge ?? 0))}s`
-    this.drawLabel(structure.x, structure.y + structure.radius + 18, `${STRUCTURE_ART[structure.type].label} · ${status}`, structure.crystalReady ? '#f3a0b3' : `rgb(${color})`)
   }
 
   private drawPickups(snapshot: GameSnapshot) {
@@ -328,8 +343,6 @@ export class GameRenderer {
       context.save()
       context.translate(pickup.x, pickup.y)
       context.rotate(Math.PI / 4)
-      context.shadowColor = '#b6a5ff'
-      context.shadowBlur = 10
       context.fillStyle = '#b6a5ff'
       context.fillRect(-pulse, -pulse, pulse * 2, pulse * 2)
       context.restore()
@@ -338,28 +351,36 @@ export class GameRenderer {
 
   private drawProjectiles(snapshot: GameSnapshot, predictionSeconds: number) {
     const context = this.context
-    context.lineCap = 'round'
     for (const projectile of snapshot.projectiles) {
       const x = projectile.x + projectile.vx * predictionSeconds
       const y = projectile.y + projectile.vy * predictionSeconds
-      context.strokeStyle = projectile.color
-      context.lineWidth = projectile.radius * 1.7
-      context.globalAlpha = projectile.enemy ? 0.8 : 0.95
-      context.shadowColor = projectile.color
-      context.shadowBlur = projectile.enemy ? 9 : 13
-      context.beginPath()
+      const angle = Math.atan2(projectile.vy * WORLD_Y_SCALE, projectile.vx)
+      const block = PIXEL_SCALE
+      context.save()
+      context.translate(x, y)
+      context.scale(1, 1 / WORLD_Y_SCALE)
+      context.fillStyle = projectile.color
       if (projectile.melee) {
-        const angle = Math.atan2(projectile.vy, projectile.vx)
-        context.lineWidth = Math.max(4, projectile.radius * 0.72)
-        context.arc(x, y, projectile.radius * 1.9, angle - 0.72, angle + 0.72)
+        for (let spark = -3; spark <= 3; spark += 1) {
+          const slashAngle = angle + spark * 0.22
+          const radius = projectile.radius * (1.25 + Math.abs(spark) * 0.12)
+          context.fillRect(Math.round(Math.cos(slashAngle) * radius / block) * block - block / 2, Math.round(Math.sin(slashAngle) * radius / block) * block - block / 2, block, block)
+        }
       } else {
-        context.moveTo(x, y)
-        context.lineTo(x - projectile.vx * 0.035, y - projectile.vy * 0.035)
+        context.rotate(angle)
+        if (projectile.enemy) {
+          const size = projectile.radius >= 9 ? block * 3 : block * 2
+          context.fillRect(-size / 2, -block / 2, size, block)
+          context.fillRect(-block / 2, -size / 2, block, size)
+        } else {
+          const length = projectile.radius >= 8 ? block * 4 : block * 3
+          context.fillRect(-length / 2, -block / 2, length, block)
+          context.fillStyle = '#fff4c7'
+          context.fillRect(length / 2 - block, -block / 2, block, block)
+        }
       }
-      context.stroke()
+      context.restore()
     }
-    context.shadowBlur = 0
-    context.globalAlpha = 1
   }
 
   private drawBossWarnings(enemies: EnemyState[], predictionSeconds: number) {
@@ -395,7 +416,6 @@ export class GameRenderer {
       }
       context.setLineDash([])
       context.restore()
-      this.drawLabel(x, y - enemy.radius - 34, 'DANGER · BREAK THE WEAK POINT', color)
     }
   }
 
@@ -406,123 +426,128 @@ export class GameRenderer {
       const y = enemy.y + enemy.vy * predictionSeconds
       const burning = enemy.burn > 0
       const color = burning ? '#ff735c' : enemy.slow > 0 ? '#9bd6ff' : '#e8eee7'
-      if (this.enemySpriteAtlas.complete && this.enemySpriteAtlas.naturalWidth > 0) {
-        const boss = isBoss(enemy.type)
-        const size = boss ? enemy.finale ? 194 : 174 : enemy.type === 'bulwark' ? 116 : enemy.type === 'spitter' || enemy.type === 'leech' ? 72 : enemy.type === 'charger' ? 94 : 82
-        const movement = Math.hypot(enemy.vx, enemy.vy)
-        const facing = movement > 0.1 ? Math.atan2(enemy.vy, enemy.vx) : (this.enemyFacing.get(enemy.id) ?? 0)
-        if (movement > 0.1) this.enemyFacing.set(enemy.id, facing)
-        const transform = uprightSpriteTransform(facing)
-        const motion = Math.min(1, movement / Math.max(1, enemy.speed))
-        const stride = Math.sin(performance.now() / 88 + enemy.id * 1.73)
-        const bob = motion > 0.04 ? Math.abs(stride) * 1.8 : Math.sin(performance.now() / 310 + enemy.id) * 0.35
-        context.save()
-        context.fillStyle = 'rgba(0, 0, 0, .46)'
-        context.beginPath()
-        context.ellipse(x, y + enemy.radius * 0.72, size * 0.28, size * 0.12, 0, 0, TAU)
-        context.fill()
-        context.shadowColor = burning ? '#ff593d' : enemy.slow > 0 ? '#82ceff' : boss ? (BOSS_COLORS[enemy.type] ?? '#ef375e') : 'rgba(0,0,0,0)'
-        context.shadowBlur = burning || enemy.slow > 0 ? 20 : enemy.finale ? 28 : boss ? 16 : 0
-        this.drawAtlasSprite(
-          this.enemySpriteAtlas,
-          4,
-          3,
-          ENEMY_SPRITE_INDEX[enemy.type],
-          x,
-          y - bob,
-          size * (1 - stride * 0.016 * motion),
-          size * (1 + stride * 0.022 * motion),
-          transform.rotation,
-          true,
-          transform.flipX,
-        )
-        context.restore()
-        if (boss) this.drawBossIdentity(enemy, x, y, facing, size)
-        if (boss) {
-          context.strokeStyle = BOSS_COLORS[enemy.type] ?? '#ef718e'
-          context.globalAlpha = 0.28 + Math.sin(enemy.phase * 2) * 0.08
-          context.lineWidth = 2
-          context.beginPath()
-          context.arc(x, y, (enemy.finale ? 80 : 69) + Math.sin(enemy.phase * 2) * 4, 0, TAU)
-          context.stroke()
-          context.globalAlpha = 1
-          if (bossWeakPointIsOpen(enemy)) {
-            const weakAngle = bossWeakPointAngle(enemy)
-            const weakX = x + Math.cos(weakAngle) * enemy.radius * 0.82
-            const weakY = y + Math.sin(weakAngle) * enemy.radius * 0.82
-            context.save()
-            context.shadowColor = '#fff4af'
-            context.shadowBlur = 18
-            context.fillStyle = '#fff4af'
-            context.strokeStyle = color
-            context.lineWidth = 3
-            context.beginPath()
-            context.arc(weakX, weakY, 8 + Math.sin(performance.now() / 70) * 2, 0, TAU)
-            context.fill()
-            context.stroke()
-            context.restore()
-          }
+      const boss = isBoss(enemy.type)
+      const movement = Math.hypot(enemy.vx, enemy.vy)
+      const facing = movement > 0.1 ? Math.atan2(enemy.vy, enemy.vx) : (this.enemyFacing.get(enemy.id) ?? 0)
+      if (movement > 0.1) this.enemyFacing.set(enemy.id, facing)
+      const stride = Math.sin(performance.now() / 105 + enemy.id * 1.73)
+      const bob = movement > 1 ? (stride > 0 ? PIXEL_SCALE : 0) : 0
+      const visualHeight = this.drawPixelEnemy(enemy, x, y - bob, facing)
+      if (boss) this.drawBossIdentity(enemy, x, y, facing, enemy.finale ? 194 : 174)
+      if (boss) {
+        context.fillStyle = BOSS_COLORS[enemy.type] ?? '#ef718e'
+        const bossMarker = enemy.finale ? 12 : 6
+        context.fillRect(x - bossMarker / 2, y - (visualHeight + 15) / WORLD_Y_SCALE, bossMarker, PIXEL_SCALE)
+        if (bossWeakPointIsOpen(enemy)) {
+          const weakAngle = bossWeakPointAngle(enemy)
+          const weakX = x + Math.cos(weakAngle) * enemy.radius * 0.82
+          const weakY = y + Math.sin(weakAngle) * enemy.radius * 0.82
+          context.fillStyle = '#fff4af'
+          context.strokeStyle = color
+          const weakSize = PIXEL_SCALE * (1 + (Math.sin(performance.now() / 90) > 0 ? 1 : 0))
+          context.fillRect(weakX - weakSize / 2, weakY - weakSize / 2, weakSize, weakSize)
+          context.strokeRect(weakX - weakSize / 2, weakY - weakSize / 2, weakSize, weakSize)
         }
-        if (boss || (enemy.type === 'bulwark' && enemy.maxHealth > 500)) {
-          const barWidth = boss ? 130 : 92
-          this.drawBar(x - barWidth / 2, y - size * 0.47, barWidth, 5, enemy.health / enemy.maxHealth, BOSS_COLORS[enemy.type] ?? '#ef718e')
-        }
-        continue
       }
-      context.save()
-      context.translate(x, y)
-      context.rotate(Math.atan2(enemy.vy, enemy.vx) + Math.PI / 2)
-      context.strokeStyle = color
-      context.fillStyle = isBoss(enemy.type) ? 'rgba(105, 33, 62, .82)' : 'rgba(12, 22, 19, .9)'
-      context.lineWidth = isBoss(enemy.type) ? 4 : 2
-      context.shadowColor = burning ? '#ff735c' : 'transparent'
-      context.shadowBlur = burning ? 12 : 0
-
-      if (enemy.type === 'skitter') {
-        context.beginPath()
-        context.moveTo(0, -enemy.radius)
-        context.lineTo(enemy.radius, enemy.radius)
-        context.lineTo(-enemy.radius, enemy.radius)
-        context.closePath()
-      } else if (enemy.type === 'bulwark') {
-        this.polygonPath(6, enemy.radius)
-      } else if (isBoss(enemy.type)) {
-        this.polygonPath(8, enemy.radius)
-      } else {
-        context.beginPath()
-        context.arc(0, 0, enemy.radius, 0, TAU)
-      }
-      context.fill()
-      context.stroke()
-
-      if (enemy.type === 'spitter') {
-        context.fillStyle = '#ef718e'
-        context.beginPath()
-        context.arc(0, 0, 5, 0, TAU)
-        context.fill()
-      }
-      if (enemy.type === 'thrall') {
-        context.beginPath()
-        context.moveTo(-enemy.radius * 0.7, -enemy.radius * 0.6)
-        context.lineTo(-enemy.radius * 1.1, -enemy.radius * 1.25)
-        context.moveTo(enemy.radius * 0.7, -enemy.radius * 0.6)
-        context.lineTo(enemy.radius * 1.1, -enemy.radius * 1.25)
-        context.stroke()
-      }
-      if (isBoss(enemy.type)) {
-        context.strokeStyle = '#f2d479'
-        context.lineWidth = 2
-        context.beginPath()
-        context.arc(0, 0, enemy.radius * 0.55, 0, TAU)
-        context.stroke()
-        this.drawGlyph(0, 3, 'Ⅰ', '#f2d479', 24)
-      }
-      context.restore()
-
-      if (isBoss(enemy.type) || (enemy.type === 'bulwark' && enemy.maxHealth > 500)) {
-        this.drawBar(x - 42, y - enemy.radius - 14, 84, 5, enemy.health / enemy.maxHealth, '#ef718e')
+      if (boss || (enemy.type === 'bulwark' && enemy.maxHealth > 500)) {
+        const barWidth = boss ? 130 : 92
+        this.drawBar(x - barWidth / 2, y - (visualHeight + 7) / WORLD_Y_SCALE, barWidth, 5, enemy.health / enemy.maxHealth, BOSS_COLORS[enemy.type] ?? '#ef718e')
       }
     }
+  }
+
+  private drawPixelEnemy(enemy: EnemyState, x: number, y: number, facing: number): number {
+    const context = this.context
+    const u = PIXEL_SCALE
+    const boss = isBoss(enemy.type)
+    const flip = Math.cos(facing) < 0 ? -1 : 1
+    const visualHeight = boss ? 108 : enemy.type === 'bulwark' ? 72 : 60
+    context.save()
+    context.fillStyle = 'rgba(0,0,0,.62)'
+    context.fillRect(x - (boss ? 9 : 4) * u, y + u, (boss ? 18 : 8) * u, boss ? 2 * u : u)
+    context.translate(x, y)
+    context.scale(1, 1 / WORLD_Y_SCALE)
+    context.scale(flip, 1)
+    const rect = (color: string, left: number, top: number, width: number, height: number) => {
+      context.fillStyle = color
+      context.fillRect(left * u, top * u, width * u, height * u)
+    }
+
+    if (enemy.type === 'thrall') {
+      rect('#161716', -2, -3, 2, 3); rect('#161716', 1, -3, 2, 3)
+      rect('#4c3528', -3, -7, 5, 4); rect('#7a5437', -2, -7, 3, 1)
+      rect('#c8b78e', -2, -10, 3, 3); rect('#887b60', -2, -10, 3, 1)
+      rect('#1a1715', 0, -9, 1, 1); rect('#c8b78e', 2, -6, 3, 1); rect('#8e7655', 4, -5, 1, 2)
+    } else if (enemy.type === 'skitter') {
+      rect('#171218', -5, -5, 10, 1); rect('#171218', -4, -7, 1, 5); rect('#171218', 3, -7, 1, 5)
+      rect('#29182f', -3, -6, 6, 4); rect('#743a83', -2, -7, 4, 4); rect('#b258b2', -1, -6, 2, 1)
+      rect('#f0d180', 1, -5, 1, 1)
+    } else if (enemy.type === 'spitter') {
+      rect('#5b1722', -4, -7, 8, 6); rect('#a83343', -3, -8, 6, 8)
+      rect('#ead9bb', -2, -6, 4, 4); rect('#5b1020', -1, -6, 2, 4); rect('#fff1d0', 0, -5, 1, 2)
+      rect('#7d202b', -5, -6, 2, 1); rect('#7d202b', 3, -3, 2, 1)
+    } else if (enemy.type === 'bulwark') {
+      rect('#292b2d', -4, -4, 3, 4); rect('#292b2d', 2, -4, 3, 4)
+      rect('#4b4e4e', -5, -10, 10, 7); rect('#77796f', -3, -12, 6, 4)
+      rect('#a0a38e', -2, -11, 2, 1); rect('#202124', 1, -10, 1, 1)
+      rect('#666961', -6, -9, 2, 6); rect('#666961', 4, -8, 3, 5)
+    } else if (enemy.type === 'wraith') {
+      rect('#0b2528', -4, -7, 8, 6); rect('#0e525a', -3, -10, 6, 8); rect('#167a7d', -2, -11, 4, 3)
+      rect('#b9d6c9', -1, -9, 2, 2); rect('#071415', 0, -9, 1, 1)
+      rect('#16454b', -5, -5, 2, 3); rect('#16454b', 3, -4, 3, 2)
+    } else if (enemy.type === 'charger') {
+      rect('#3a1717', -5, -5, 8, 5); rect('#8a2c29', -4, -7, 8, 5); rect('#b85b3e', 2, -8, 4, 4)
+      rect('#e2c58b', 4, -10, 1, 2); rect('#e2c58b', 6, -9, 2, 1); rect('#1b1514', 4, -7, 1, 1)
+      rect('#211717', -4, -2, 2, 2); rect('#211717', 1, -2, 2, 2)
+    } else if (enemy.type === 'hexer') {
+      rect('#16121c', -3, -3, 2, 3); rect('#16121c', 1, -3, 2, 3)
+      rect('#36234f', -4, -8, 8, 6); rect('#67438c', -3, -11, 6, 5); rect('#17121e', -2, -9, 4, 3)
+      rect('#d8b989', 0, -8, 1, 1); rect('#b986ff', 4, -7, 1, 7); rect('#e0c2ff', 3, -7, 3, 2)
+    } else if (enemy.type === 'leech') {
+      rect('#491622', -4, -7, 8, 7); rect('#842438', -3, -8, 6, 8); rect('#d65b63', -2, -6, 4, 4)
+      rect('#221318', -1, -5, 2, 2); rect('#e8c7a1', -2, -6, 1, 1); rect('#e8c7a1', 1, -3, 1, 1)
+    } else if (enemy.type === 'tollkeeper') {
+      rect('#241d18', -6, -4, 4, 4); rect('#241d18', 2, -4, 4, 4)
+      rect('#5c4327', -7, -12, 14, 9); rect('#c18736', -5, -14, 10, 9); rect('#f0bf52', -4, -13, 8, 2)
+      rect('#2a2020', -3, -11, 6, 5); rect('#f4dc8c', 1, -10, 1, 1); rect('#b47a2a', -9, -11, 3, 8)
+    } else if (enemy.type === 'broodmother') {
+      rect('#161118', -12, -7, 24, 2); rect('#161118', -10, -11, 3, 10); rect('#161118', 7, -11, 3, 10)
+      rect('#331a3a', -8, -11, 16, 9); rect('#773a85', -5, -14, 10, 10); rect('#b558ad', -3, -13, 6, 3)
+      rect('#e7cb77', -2, -10, 1, 1); rect('#e7cb77', 2, -10, 1, 1)
+    } else if (enemy.type === 'graveknight') {
+      rect('#17191c', -5, -5, 4, 5); rect('#17191c', 2, -5, 4, 5)
+      rect('#343a42', -7, -14, 14, 10); rect('#626a72', -5, -17, 10, 6); rect('#24272d', -4, -15, 8, 3)
+      rect('#72d8d3', 1, -14, 2, 1); rect('#b98f45', -7, -10, 14, 2)
+    } else if (enemy.type === 'eclipse-eye') {
+      rect('#29143c', -9, -14, 18, 14); rect('#67428f', -7, -16, 14, 16); rect('#d8c3e5', -4, -12, 8, 8)
+      rect('#8d36c8', -2, -12, 4, 8); rect('#fff0bb', 0, -10, 1, 4)
+      rect('#2d1740', -11, -10, 3, 3); rect('#2d1740', 8, -6, 3, 3)
+    } else if (enemy.type === 'void-hart') {
+      rect('#111819', -5, -5, 4, 5); rect('#111819', 2, -5, 4, 5); rect('#17383b', -7, -14, 14, 10)
+      rect('#266b68', -5, -17, 10, 5); rect('#68d8cb', -4, -19, 2, 4); rect('#68d8cb', 3, -19, 2, 4)
+      rect('#e4d8a3', 1, -15, 1, 1)
+    } else if (enemy.type === 'prism-witch') {
+      rect('#191221', -5, -4, 4, 4); rect('#191221', 2, -4, 4, 4); rect('#43245c', -8, -13, 16, 10)
+      rect('#7b4195', -5, -17, 10, 7); rect('#1c1422', -3, -14, 6, 4); rect('#ff8be9', 1, -13, 1, 1)
+      rect('#efcc75', 8, -15, 1, 15); rect('#8cd8ff', 7, -17, 3, 3)
+    } else if (enemy.type === 'iron-choir') {
+      rect('#27201a', -7, -5, 5, 5); rect('#27201a', 3, -5, 5, 5); rect('#6a472d', -9, -13, 18, 9)
+      rect('#c17b45', -7, -17, 5, 7); rect('#d99a59', -2, -19, 5, 9); rect('#b66a3f', 4, -16, 5, 6)
+      rect('#211818', -5, -14, 1, 1); rect('#211818', 0, -16, 1, 1); rect('#211818', 6, -13, 1, 1)
+    } else if (enemy.type === 'star-eater') {
+      rect('#120e1d', -10, -15, 20, 15); rect('#3d2364', -8, -17, 16, 17); rect('#7d4ac1', -5, -13, 10, 9)
+      rect('#e8d7ee', -3, -11, 6, 6); rect('#321049', -1, -11, 3, 6); rect('#fff3ad', 0, -10, 1, 4)
+      rect('#9b65ed', -12, -12, 3, 3); rect('#9b65ed', 9, -6, 3, 3)
+    }
+
+    if (enemy.burn > 0) {
+      rect('#ff633f', -3, boss ? -20 : -12, 1, 2); rect('#ffb14b', 2, boss ? -18 : -11, 1, 1)
+    }
+    if (enemy.slow > 0) {
+      rect('#9bdcff', -4, -2, 2, 1); rect('#d8f6ff', 2, -1, 2, 1)
+    }
+    context.restore()
+    return visualHeight
   }
 
   private drawBossIdentity(enemy: EnemyState, x: number, y: number, facing: number, size: number) {
@@ -532,19 +557,20 @@ export class GameRenderer {
     const pulse = Math.sin(enemy.phase * 3) * 3
     if (enemy.type === 'graveknight') {
       context.rotate(facing)
-      context.shadowColor = '#f2d479'
-      context.shadowBlur = 8
       context.strokeStyle = '#f8e8ae'
-      context.lineWidth = 5
+      context.lineWidth = PIXEL_SCALE
+      context.lineCap = 'square'
       context.beginPath()
       context.moveTo(size * 0.22, 0)
-      context.lineTo(size * 0.62, 0)
+      context.lineTo(size * 0.9, 0)
       context.stroke()
+      context.fillStyle = '#fff5c8'
+      context.fillRect(size * 0.88, -PIXEL_SCALE / 2, PIXEL_SCALE, PIXEL_SCALE)
       context.strokeStyle = '#b98f45'
-      context.lineWidth = 3
+      context.lineWidth = PIXEL_SCALE
       context.beginPath()
-      context.moveTo(size * 0.2, -13)
-      context.lineTo(size * 0.2, 13)
+      context.moveTo(size * 0.2, -18)
+      context.lineTo(size * 0.2, 18)
       context.stroke()
     }
     if (enemy.type === 'void-hart') {
@@ -607,24 +633,13 @@ export class GameRenderer {
       const size = companion.kind === 'mercy-moth' || companion.kind === 'sunbird' || companion.kind === 'gravewing' ? 58
         : companion.kind === 'aegis-hound' || companion.kind === 'thornling' ? 52 : 46
       context.save()
-      context.strokeStyle = `${owner.color}38`
-      context.lineWidth = 1
-      context.setLineDash([2, 5])
-      context.beginPath()
-      context.moveTo(owner.x, owner.y)
-      context.lineTo(x, y)
-      context.stroke()
-      context.setLineDash([])
       context.fillStyle = 'rgba(0,0,0,.38)'
       context.beginPath()
       context.ellipse(x, y + size * 0.2, size * 0.22, size * 0.08, 0, 0, TAU)
       context.fill()
-      context.shadowColor = owner.color
-      context.shadowBlur = 10
-      const transform = uprightSpriteTransform(companion.aim)
       this.drawAtlasSprite(
         this.companionSpriteAtlas, 4, 2, COMPANION_SPRITE_INDEX[companion.kind],
-        x, y - 3, size, size, transform.rotation, true, transform.flipX,
+        x, y - 3, size, size, 0, true, Math.cos(companion.aim) < 0,
       )
       context.restore()
     }
@@ -656,7 +671,6 @@ export class GameRenderer {
         context.arc(x, y, 29 + Math.sin(performance.now() / 180) * 2, 0, TAU)
         context.stroke()
         context.restore()
-        this.drawLabel(x, y + 38, 'SEPARATED', '#ef718e')
       }
       if (player.specialPulse > 0 && !player.downed) this.drawSpecialPulse(player, x, y)
 
@@ -789,23 +803,24 @@ export class GameRenderer {
     const local = player.id === localPlayerId
     const moving = !player.downed && Math.hypot(player.vx, player.vy) > 8
     const phase = performance.now() / 92 + CHARACTER_SPRITE_INDEX[player.character] * 1.71
-    const stride = moving ? Math.sin(phase) : 0
-    const bob = player.downed ? 0 : moving ? Math.abs(stride) * 1.6 : Math.sin(phase * 0.28) * 0.45
+    const stride = moving ? (Math.sin(phase) >= 0 ? 1 : -1) : 0
     const screenAim = Math.atan2(Math.sin(player.aim) * WORLD_Y_SCALE, Math.cos(player.aim))
-    const facing = Math.cos(player.aim) < 0 ? -1 : 1
-    const recoil = player.fireCooldown > 0 && !player.downed ? Math.min(3, player.fireCooldown * 18) : 0
+    const direction = Math.round(screenAim / (Math.PI / 4)) * (Math.PI / 4)
+    const directionX = Math.round(Math.cos(direction))
+    const directionY = Math.round(Math.sin(direction))
+    const facing = directionX < 0 ? -1 : 1
+    const u = PIXEL_SCALE
+    const build = visual.build
+    const recoil = player.fireCooldown > 0 && !player.downed ? u : 0
 
     context.save()
-    context.fillStyle = 'rgba(0,0,0,.5)'
-    context.beginPath()
-    context.ellipse(x, y + 9, 17 * visual.build, 7, 0, 0, TAU)
-    context.fill()
+    context.fillStyle = 'rgba(0,0,0,.62)'
+    context.fillRect(x - 3 * u * build, y + 4 * u, 6 * u * build, u)
     if (local && !player.downed) {
       context.strokeStyle = player.color
-      context.lineWidth = 1.5
-      context.setLineDash([3, 6])
-      context.beginPath(); context.ellipse(x, y + 3, 29, 21, 0, 0, TAU); context.stroke()
-      context.setLineDash([])
+      context.lineWidth = u
+      const ring = 6 * u
+      context.strokeRect(x - ring / 2, y - ring * 0.28, ring, ring * 0.72)
     }
     context.restore()
 
@@ -813,130 +828,124 @@ export class GameRenderer {
     context.translate(x, y)
     context.scale(1, 1 / WORLD_Y_SCALE)
     context.globalAlpha = player.downed ? 0.5 : 1
-    context.shadowColor = player.color
-    context.shadowBlur = local ? 9 : 4
-
-    context.save()
-    context.scale(facing, 1)
-    context.translate(0, -bob)
-    const width = 10 * visual.build
-    const height = visual.height
-    const coatBottom = -12 * height
-    const hipY = -20 * height
-    const shoulderY = -34 * height
-    const headY = -45 * height
-
-    if (!player.downed) {
-      context.strokeStyle = '#15151c'
-      context.lineWidth = 5
-      context.lineCap = 'round'
-      context.beginPath()
-      context.moveTo(-4 * visual.build, hipY); context.lineTo(-5 - stride * 3, -2)
-      context.moveTo(4 * visual.build, hipY); context.lineTo(6 + stride * 3, -2)
-      context.stroke()
-      context.strokeStyle = visual.accent
-      context.lineWidth = 2
-      context.beginPath(); context.moveTo(-8 - stride * 3, -1); context.lineTo(-2 - stride * 3, -1); context.moveTo(3 + stride * 3, -1); context.lineTo(10 + stride * 3, -1); context.stroke()
-    }
-
-    context.fillStyle = visual.coat
-    context.strokeStyle = '#14171a'
-    context.lineWidth = 2
-    context.beginPath()
     if (player.downed) {
-      context.ellipse(0, -8, 22, 9, -0.14, 0, TAU)
-    } else {
-      context.moveTo(-width, shoulderY)
-      context.quadraticCurveTo(-width * 1.18, hipY, -width * 1.28, coatBottom)
-      context.lineTo(width * 1.28, coatBottom)
-      context.quadraticCurveTo(width * 1.18, hipY, width, shoulderY)
-      context.closePath()
-    }
-    context.fill(); context.stroke()
-
-    if (!player.downed) {
-      context.fillStyle = visual.accent
-      context.fillRect(-width + 2, shoulderY + 5, width * 2 - 4, 3)
-      context.fillStyle = 'rgba(255,255,255,.17)'
-      context.fillRect(-width + 3, shoulderY + 10, 3, Math.max(5, hipY - shoulderY - 4))
-      context.strokeStyle = visual.skin
-      context.lineWidth = 5 * visual.build
-      context.beginPath()
-      context.moveTo(-width + 1, shoulderY + 2); context.lineTo(-width - 4 - stride * 2, hipY + 4)
-      context.moveTo(width - 1, shoulderY + 3); context.lineTo(width + 5 + stride * 2, hipY + 2)
-      context.stroke()
-    }
-
-    if (!player.downed) {
-      const hairSway = moving ? stride * 3 : Math.sin(phase * 0.35) * 1.2
-      context.strokeStyle = visual.hair
-      context.lineCap = 'round'
-      context.lineWidth = player.character === 'rapunsel' ? 7 : 5
-      if (visual.hairLength > 10) {
-        context.beginPath()
-        context.moveTo(-2, headY - 3)
-        context.quadraticCurveTo(-11, headY + visual.hairLength * 0.5, -8 - hairSway, headY + visual.hairLength)
-        context.stroke()
-      }
-      if (player.character === 'rapunsel') {
-        context.lineWidth = 6
-        context.beginPath()
-        context.moveTo(-5, headY)
-        context.bezierCurveTo(-20, -20, -19 + hairSway, -4, -4 + hairSway * 2, 3)
-        context.stroke()
-        context.strokeStyle = '#9f6d42'; context.lineWidth = 2; context.beginPath(); context.moveTo(-6, headY + 4); context.bezierCurveTo(-16, -20, -15 + hairSway, -4, -3 + hairSway * 2, 2); context.stroke()
-      }
-      context.fillStyle = visual.skin
-      context.strokeStyle = '#1a1719'
-      context.lineWidth = 1.5
-      context.beginPath(); context.ellipse(0, headY, 8.5 * visual.build, 10, -0.12, 0, TAU); context.fill(); context.stroke()
       context.fillStyle = visual.hair
-      context.beginPath(); context.arc(-1, headY - 3, 9 * visual.build, Math.PI, TAU); context.lineTo(8 * visual.build, headY + 1); context.quadraticCurveTo(2, headY - 1, -8 * visual.build, headY + 3); context.closePath(); context.fill()
-      if (visual.style === 'ponytail') { context.strokeStyle = visual.hair; context.lineWidth = 6; context.beginPath(); context.moveTo(-6, headY - 1); context.quadraticCurveTo(-16, headY + 4, -13 - hairSway, headY + 14); context.stroke() }
-      if (visual.style === 'braid') { context.strokeStyle = visual.hair; context.lineWidth = 4; context.setLineDash([4, 2]); context.beginPath(); context.moveTo(-7, headY + 1); context.lineTo(-9 - hairSway, headY + visual.hairLength); context.stroke(); context.setLineDash([]) }
-      context.fillStyle = '#eef6ee'
-      context.fillRect(3, headY - 1, 2.5, 1.5)
-    }
-    context.restore()
-
-    if (!player.downed) {
-      context.save()
-      context.rotate(screenAim)
-      context.translate(11 - recoil, -26)
-      context.strokeStyle = visual.skin
-      context.lineWidth = 4
-      context.beginPath(); context.moveTo(-6, 0); context.lineTo(3, 0); context.stroke()
-      this.drawHunterWeapon(player.weapon, visual.accent)
+      context.fillRect(-4 * u, -2 * u, 3 * u, 3 * u)
+      context.fillStyle = visual.skin
+      context.fillRect(-u, -u, 2 * u, 2 * u)
+      context.fillStyle = visual.coat
+      context.fillRect(u, -u, 5 * u * build, 2 * u)
+      context.fillStyle = '#171820'
+      context.fillRect(4 * u, u, 3 * u, u)
       context.restore()
+      context.save()
+      context.strokeStyle = '#ef718e'
+      context.lineWidth = u
+      context.beginPath(); context.moveTo(x - 2 * u, y - 2 * u); context.lineTo(x + 2 * u, y + 2 * u); context.moveTo(x + 2 * u, y - 2 * u); context.lineTo(x - 2 * u, y + 2 * u); context.stroke()
+      context.restore()
+      this.drawBar(x - 4 * u, y - 5 * u, 8 * u, u, player.reviveProgress / 2.2, '#f2d479')
+      return true
     }
-    context.shadowBlur = 0
-    context.restore()
 
-    if (player.downed) {
-      context.save(); context.strokeStyle = '#ef718e'; context.lineWidth = 2; context.beginPath(); context.moveTo(x - 8, y - 8); context.lineTo(x + 8, y + 8); context.moveTo(x + 8, y - 8); context.lineTo(x - 8, y + 8); context.stroke(); context.restore()
-      this.drawBar(x - 24, y - 25, 48, 3, player.reviveProgress / 2.2, '#f2d479')
+    const stepLeft = stride < 0 ? u : 0
+    const stepRight = stride > 0 ? u : 0
+    const bodyShift = directionX * u * 0.5
+    const headShift = directionX * u
+    const hairTrailX = -directionX || -facing
+    const hairTrailY = directionY < 0 ? 1 : 0
+
+    // Hair is laid down first so the upright body reads as a genuine 3/4 figure.
+    if (visual.style === 'long' || visual.style === 'waves' || visual.style === 'braid' || visual.style === 'ponytail') {
+      context.fillStyle = visual.hair
+      context.fillRect(headShift - 2 * u, -12 * u, 4 * u, 4 * u)
+      context.fillRect(headShift + hairTrailX * 2 * u, (-9 + hairTrailY) * u, 2 * u, 4 * u)
+      if (visual.hairLength >= 16) context.fillRect(headShift + hairTrailX * 3 * u, (-6 + hairTrailY) * u, 2 * u, 3 * u)
+      if (player.character === 'rapunsel') context.fillRect(headShift + hairTrailX * 4 * u, -3 * u, 2 * u, 7 * u)
+      context.fillRect(headShift - 2 * u, -10 * u, u, 4 * u)
+      context.fillRect(headShift + u, -10 * u, u, 3 * u)
+      context.globalAlpha *= 0.55
+      context.fillStyle = visual.accent
+      context.fillRect(headShift + hairTrailX * 2 * u, (-8 + hairTrailY) * u, u, 2 * u)
+      context.globalAlpha = player.downed ? 0.5 : 1
+    } else {
+      context.fillStyle = visual.hair
+      context.fillRect(headShift - 2 * u, -12 * u, 4 * u, 3 * u)
     }
-    this.drawLabel(x, y + 24, `${player.name}${player.awakened ? ' ✦' : ''}`, local ? '#f5f1de' : '#b8c4bd')
+
+    // Two offset legs and a short torso keep the approved top-facing/3/4 stance.
+    context.fillStyle = visual.coat
+    context.fillRect(bodyShift - 2 * u, -u + stepLeft, 2 * u, 6 * u)
+    context.fillRect(bodyShift + u, -u + stepRight, 2 * u, 6 * u)
+    context.fillStyle = '#090b10'
+    context.fillRect(bodyShift - 2 * u, 4 * u + stepLeft, 2 * u, 2 * u)
+    context.fillRect(bodyShift + u, 4 * u + stepRight, 2 * u, 2 * u)
+    context.fillStyle = '#121419'
+    context.fillRect(bodyShift - 2.5 * u * build, -7 * u, 5 * u * build, 7 * u)
+    context.fillRect(bodyShift - 3 * u * build, -6 * u, 6 * u * build, 2 * u)
+    context.fillStyle = visual.coat
+    context.fillRect(bodyShift - 1.5 * u, -6 * u, 3 * u, 4 * u)
+    context.fillStyle = visual.accent
+    context.fillRect(bodyShift - 2 * u * build, -2 * u, 4 * u * build, u)
+    if (player.awakened) context.fillRect(bodyShift - u / 2, -7 * u, u, u)
+
+    context.fillStyle = visual.skin
+    context.fillRect(bodyShift - 3 * u * build, -5 * u, u, 3 * u)
+    context.fillRect(bodyShift + (2 * u * build), -5 * u, u, 2 * u)
+    context.fillRect(headShift - u / 2, -8 * u, u, u)
+
+    // Face, fringe, and eye move between eight discrete look directions without rotating upside down.
+    context.fillStyle = visual.skin
+    context.fillRect(headShift - 1.5 * u, -11 * u, 3 * u, 3 * u)
+    context.fillStyle = visual.hair
+    context.fillRect(headShift - 2 * u, -12 * u, 4 * u, u)
+    context.fillRect(headShift - 2 * u, -11 * u, u, 2 * u)
+    if (facing < 0) context.fillRect(headShift + u, -11 * u, u, u)
+    context.fillStyle = '#edf7ee'
+    const eyeX = headShift + (directionX > 0 ? u / 2 : directionX < 0 ? -u : -u / 2)
+    const eyeY = directionY > 0 ? -9 * u : -10 * u
+    context.fillRect(eyeX, eyeY, u / 2, u / 2)
+
+    // Aim is exact, while the body remains upright and uses the closest 8-way pose.
+    context.save()
+    context.translate(bodyShift + directionX * u, -6 * u + directionY * u * 0.5)
+    context.rotate(screenAim)
+    context.fillStyle = visual.skin
+    context.fillRect(-u, -u / 2, 2 * u, u)
+    context.translate(u - recoil, 0)
+    this.drawHunterWeapon(player.weapon, visual.accent, recoil > 0)
+    context.restore()
+    context.restore()
     return true
   }
 
-  private drawHunterWeapon(weapon: PlayerState['weapon'], accent: string) {
+  private drawHunterWeapon(weapon: PlayerState['weapon'], accent: string, firing = false) {
     const context = this.context
-    context.lineCap = 'round'
-    context.strokeStyle = '#171b20'
-    context.fillStyle = '#242a31'
-    context.lineWidth = weapon === 'sword' ? 3 : 5
+    const u = PIXEL_SCALE
+    context.fillStyle = '#20242a'
     if (weapon === 'sword') {
-      context.shadowColor = accent; context.shadowBlur = 7
-      context.beginPath(); context.moveTo(0, 0); context.lineTo(21, 0); context.stroke()
-      context.strokeStyle = accent; context.lineWidth = 1.5; context.beginPath(); context.moveTo(5, 0); context.lineTo(21, 0); context.stroke()
-      context.strokeStyle = '#b28d55'; context.lineWidth = 3; context.beginPath(); context.moveTo(3, -5); context.lineTo(3, 5); context.stroke()
+      context.fillStyle = '#8c6139'
+      context.fillRect(-u, -u / 2, 2 * u, u)
+      context.fillStyle = '#fff0bd'
+      context.fillRect(u, -u / 2, 6 * u, u)
+      context.fillStyle = accent
+      context.fillRect(6 * u, -u / 2, u, u)
+      context.fillStyle = '#b98f45'
+      context.fillRect(0, -1.5 * u, u, 3 * u)
       return
     }
-    const length = weapon === 'railgun' ? 22 : weapon === 'scattergun' || weapon === 'frost-cannon' ? 18 : weapon === 'revolver' ? 11 : 15
-    context.beginPath(); context.moveTo(0, 0); context.lineTo(length, 0); context.stroke()
-    context.strokeStyle = accent; context.lineWidth = 1.5; context.beginPath(); context.moveTo(length * 0.42, -2); context.lineTo(length - 1, -2); context.stroke()
-    if (weapon === 'grenade-launcher' || weapon === 'seeker') { context.fillStyle = accent; context.beginPath(); context.arc(length * 0.45, 0, 3.2, 0, TAU); context.fill() }
+    const length = weapon === 'railgun' ? 6 : weapon === 'scattergun' || weapon === 'frost-cannon' ? 5 : weapon === 'revolver' ? 3 : 4
+    context.fillRect(0, -u / 2, length * u, u)
+    context.fillStyle = '#080b0e'
+    context.fillRect(u, u / 2, u, u)
+    context.fillStyle = accent
+    if (weapon === 'grenade-launcher' || weapon === 'seeker') context.fillRect(2 * u, -u, 2 * u, 2 * u)
+    else context.fillRect((length - 1) * u, -u / 2, u, u)
+    if (firing) {
+      context.fillStyle = '#ffb348'
+      context.fillRect(length * u, -u, u, 2 * u)
+      context.fillStyle = '#fff2a8'
+      context.fillRect((length + 1) * u, -u / 2, u, u)
+    }
   }
 
   private drawSpecialPulse(player: PlayerState, x: number, y: number) {
@@ -1014,34 +1023,33 @@ export class GameRenderer {
 
   private drawVignette() {
     const context = this.context
-    const gradient = context.createRadialGradient(this.width / 2, this.height / 2, Math.min(this.width, this.height) * 0.25, this.width / 2, this.height / 2, Math.max(this.width, this.height) * 0.72)
-    gradient.addColorStop(0, 'rgba(0,0,0,0)')
-    gradient.addColorStop(1, 'rgba(0,3,2,.7)')
-    context.fillStyle = gradient
-    context.fillRect(0, 0, this.width, this.height)
+    context.fillStyle = 'rgba(0,3,2,.56)'
+    context.fillRect(0, 0, this.width, 3)
+    context.fillRect(0, this.height - 3, this.width, 3)
+    context.fillRect(0, 0, 3, this.height)
+    context.fillRect(this.width - 3, 0, 3, this.height)
+    context.fillStyle = 'rgba(0,3,2,.28)'
+    context.fillRect(3, 3, 3, 3)
+    context.fillRect(this.width - 6, 3, 3, 3)
+    context.fillRect(3, this.height - 6, 3, 3)
+    context.fillRect(this.width - 6, this.height - 6, 3, 3)
   }
 
   private drawEdgeMarkers(players: PlayerState[], localPlayerId: string) {
     const context = this.context
     for (const player of players) {
       if (player.id === localPlayerId || player.eliminated) continue
-      const sx = player.x - this.cameraX + this.width / 2
-      const sy = (player.y - this.cameraY) * WORLD_Y_SCALE + this.height / 2
-      if (sx > 40 && sx < this.width - 40 && sy > 40 && sy < this.height - 40) continue
+      const sx = (player.x - this.cameraX) / this.displayScale + this.width / 2
+      const sy = (player.y - this.cameraY) * WORLD_Y_SCALE / this.displayScale + this.height / 2
+      if (sx > 8 && sx < this.width - 8 && sy > 8 && sy < this.height - 8) continue
       const angle = Math.atan2(sy - this.height / 2, sx - this.width / 2)
-      const radiusX = this.width / 2 - 32
-      const radiusY = this.height / 2 - 32
+      const radiusX = this.width / 2 - 6
+      const radiusY = this.height / 2 - 6
       const scale = Math.min(Math.abs(radiusX / (Math.cos(angle) || 0.001)), Math.abs(radiusY / (Math.sin(angle) || 0.001)))
       const x = this.width / 2 + Math.cos(angle) * scale
       const y = this.height / 2 + Math.sin(angle) * scale
       context.fillStyle = player.color
-      context.beginPath()
-      context.arc(x, y, 5, 0, TAU)
-      context.fill()
-      context.fillStyle = '#f5f1de'
-      context.font = '10px ui-monospace, monospace'
-      context.textAlign = 'center'
-      context.fillText(player.name.toUpperCase(), x, y - 10)
+      context.fillRect(Math.round(x) - 1, Math.round(y) - 1, 3, 3)
     }
   }
 
@@ -1080,19 +1088,6 @@ export class GameRenderer {
       height,
     )
     context.restore()
-  }
-
-  private polygonPath(sides: number, radius: number) {
-    const context = this.context
-    context.beginPath()
-    for (let point = 0; point < sides; point += 1) {
-      const angle = (point / sides) * TAU - Math.PI / 2
-      const x = Math.cos(angle) * radius
-      const y = Math.sin(angle) * radius
-      if (point === 0) context.moveTo(x, y)
-      else context.lineTo(x, y)
-    }
-    context.closePath()
   }
 
   private drawBar(x: number, y: number, width: number, height: number, ratio: number, color: string) {

@@ -58,12 +58,13 @@ const stableHash = (key: string): number => {
   return Math.abs(hash)
 }
 const stableArtVariant = (key: string): number => (stableHash(key) % 5) + 1
-const upgradeSceneStyle = (character: PlayerConfig['character'], variant: number) => character === 'rapunsel' || character === 'cinder' || character === 'bastion' || character === 'warden' || character === 'briar'
-  ? `--splash-art:url('${ART_BASE}upgrade-${character}-${variant}.webp');--portrait-art:none;`
-  : CHARACTER_PORTRAITS[character]
-    ? `--splash-art:url('${ART_BASE}upgrade-backdrop-${variant}.webp');--portrait-art:url('${ART_BASE}${CHARACTER_PORTRAITS[character]}');`
-  : `--splash-art:url('${ART_BASE}upgrade-backdrop-${variant}.webp');--portrait-art:url('${ART_BASE}upgrade-${character}-${variant}.webp');`
+const upgradeSceneStyle = (character: PlayerConfig['character'], variant: number) =>
+  `--splash-art:url('${ART_BASE}upgrade-${character}-${variant}.webp');--portrait-art:none;`
 const recapSceneStyle = (won: boolean, variant: number) => `background-image:url('${ART_BASE}recap-${won ? 'victory' : 'defeat'}-${variant}.webp');`
+const playableCharacterIds = new Set(PLAYABLE_CHARACTERS.map((character) => character.id))
+const playableConfig = (config: PlayerConfig): PlayerConfig => playableCharacterIds.has(config.character)
+  ? config
+  : { ...config, character: PLAYABLE_CHARACTERS[0].id }
 const weaponArtStyle = (weapon: PlayerConfig['weapon']) => {
   const art = WEAPON_ART[weapon]
   return atlasStyle(art.file, art.columns, art.rows, art.index)
@@ -163,10 +164,10 @@ class DawnfallApp {
     }
     this.network = new MultiplayerSession({
       onLobby: (players) => {
-        this.party = players
+        this.party = players.map(playableConfig)
         if (this.screen === 'lobby') this.renderLobby()
       },
-      onStart: (configs, duration, seed, mapId, difficulty) => this.beginGuestGame(configs, duration, seed, mapId, difficulty),
+      onStart: (configs, duration, seed, mapId, difficulty) => this.beginGuestGame(configs.map(playableConfig), duration, seed, mapId, difficulty),
       onSnapshot: (snapshot) => {
         this.snapshot = snapshot
         this.lastSnapshotAt = performance.now()
@@ -284,6 +285,8 @@ class DawnfallApp {
   }
 
   private renderLobby() {
+    this.localConfig = playableConfig(this.localConfig)
+    this.party = this.party.map(playableConfig)
     const enteringLobby = this.screen !== 'lobby'
     this.screen = 'lobby'
     const canStart = this.mode !== 'guest'
@@ -440,9 +443,9 @@ class DawnfallApp {
       <main class="game-shell" data-testid="game-shell">
         <canvas id="game-canvas" aria-label="Dawnfall Protocol game arena"></canvas>
         <section class="game-hud" aria-live="off">
-          <div class="hud-top-left"><span class="hud-brand">◈ DAWNFALL</span><div id="level-readout">LV. 01</div></div>
+          <div class="hud-top-left"><span class="hud-brand">◈</span><div id="level-readout">01</div></div>
           <div class="timer-block"><small id="timer-label">UNTIL DAWN</small><strong id="timer-readout">${formatTime(this.snapshot?.timeRemaining ?? this.duration)}</strong><div class="xp-track"><i id="xp-fill"></i></div></div>
-          <button class="mute-button" id="mute-button" aria-label="Toggle sound">SOUND ON</button>
+          <button class="mute-button" id="mute-button" aria-label="Toggle sound">♫</button>
           <div class="map-hud" id="map-hud"><small>${difficultyById(this.snapshot?.difficulty ?? this.difficulty).name} · ${activeMap.epithet}</small><strong>${activeMap.name}</strong></div>
           <div class="team-hud" id="team-hud"></div>
           <div class="team-buffs-hud" id="team-buffs-hud"></div>
@@ -501,7 +504,8 @@ class DawnfallApp {
     window.onresize = () => this.renderer?.resize()
     document.querySelector('#mute-button')?.addEventListener('click', (event) => {
       const muted = this.audio.toggle()
-      ;(event.currentTarget as HTMLButtonElement).textContent = muted ? 'SOUND OFF' : 'SOUND ON'
+      ;(event.currentTarget as HTMLButtonElement).textContent = muted ? '×' : '♫'
+      ;(event.currentTarget as HTMLButtonElement).ariaLabel = muted ? 'Turn sound on' : 'Turn sound off'
     })
     document.querySelector('#spectate-prev')?.addEventListener('click', () => this.cycleSpectator(-1))
     document.querySelector('#spectate-next')?.addEventListener('click', () => this.cycleSpectator(1))
@@ -633,15 +637,15 @@ class DawnfallApp {
       timer.classList.toggle('overtime', snapshot.timeRemaining < 0)
     }
     if (timerLabel) timerLabel.textContent = snapshot.timeRemaining < 0 ? 'OVERTIME · SLAY THE TRIO' : 'UNTIL DAWN'
-    if (level) level.textContent = `${localPlayer?.eliminated ? 'WATCHING · ' : ''}LV. ${(hudPlayer?.level ?? 1).toString().padStart(2, '0')}`
+    if (level) level.textContent = (hudPlayer?.level ?? 1).toString().padStart(2, '0')
     if (xpFill) xpFill.style.width = `${Math.min(100, ((hudPlayer?.xp ?? 0) / Math.max(1, hudPlayer?.xpToNext ?? 1)) * 100)}%`
 
     const team = document.querySelector('#team-hud')
     if (team) team.innerHTML = snapshot.players.map((player) => `
-      <article class="team-chip ${player.downed ? 'downed' : ''} ${player.eliminated ? 'eliminated' : ''} ${player.isolatedFor >= 3 ? 'separated' : ''} ${player.id === focusId && localPlayer?.eliminated ? 'watching' : ''}">
+      <article title="${escapeHtml(player.name)} · Level ${player.level}" class="team-chip ${player.downed ? 'downed' : ''} ${player.eliminated ? 'eliminated' : ''} ${player.isolatedFor >= 3 ? 'separated' : ''} ${player.id === focusId && localPlayer?.eliminated ? 'watching' : ''}">
         <span class="team-portrait" style="--player:${player.color};${portraitStyle(player.character)}"></span>
-        <div><b>${escapeHtml(player.name)} · L${player.level}</b>${heartsMarkup(player.health, player.maxHealth, 'team-hearts')}</div>
-        <small>${player.eliminated ? 'LOST' : player.downed ? `${Math.ceil(player.downTimer)}s` : player.isolatedFor >= 3 ? 'SEPARATED' : player.id === focusId && localPlayer?.eliminated ? 'VIEW' : `♥ ${Math.max(1, Math.ceil(HEART_REGEN_SECONDS - player.heartRegen))}s`}</small>
+        ${heartsMarkup(player.health, player.maxHealth, 'team-hearts')}
+        <small>${player.eliminated ? '×' : player.downed ? Math.ceil(player.downTimer) : player.isolatedFor >= 3 ? '!' : player.id === focusId && localPlayer?.eliminated ? '◉' : ''}</small>
       </article>`).join('')
 
     const perks = document.querySelector('#perks-hud')
@@ -654,18 +658,22 @@ class DawnfallApp {
       const reloading = hudPlayer.reloadRemaining > 0
       const reloadProgress = reloading ? 1 - hudPlayer.reloadRemaining / hudPlayer.reloadDuration : 1
       const regenProgress = Math.max(0, Math.min(1, hudPlayer.heartRegen / HEART_REGEN_SECONDS))
-      const regenSeconds = Math.max(1, Math.ceil(HEART_REGEN_SECONDS - hudPlayer.heartRegen))
       const character = characterById(hudPlayer.character)
       const specialReady = hudPlayer.specialCooldown <= 0
       const specialProgress = specialReady ? 1 : 1 - hudPlayer.specialCooldown / Math.max(0.1, character.activeCooldown)
+      const pipCount = weapon.infiniteAmmo ? 0 : Math.min(12, hudPlayer.maxAmmo)
+      const filledPips = weapon.infiniteAmmo ? 0 : Math.round((hudPlayer.ammo / Math.max(1, hudPlayer.maxAmmo)) * pipCount)
       ammo.innerHTML = `
-        <div class="vitals-row" data-testid="player-hearts">
-          <div class="vitals-hearts"><small>${localPlayer?.eliminated ? escapeHtml(hudPlayer.name.toUpperCase()) : 'VITALS'}</small>${heartsMarkup(hudPlayer.health, hudPlayer.maxHealth, 'player-hearts')}</div>
-          <div class="regen-readout" title="One heart regenerates every minute"><span class="regen-ring" style="--regen-progress:${regenProgress * 360}deg"><i class="regen-heart">♥</i></span><b>${regenSeconds}s</b><small>REGEN</small></div>
+        <div class="pixel-vitals" data-testid="player-hearts" title="${escapeHtml(hudPlayer.name)} health">
+          ${heartsMarkup(hudPlayer.health, hudPlayer.maxHealth, 'player-hearts')}
+          <span class="regen-ring" title="One heart regenerates every minute" style="--regen-progress:${regenProgress * 360}deg"><i class="regen-heart">♥</i></span>
         </div>
-        <div class="combat-readouts">
-          <div class="weapon-readout"><small>${weapon.name.toUpperCase()}</small><strong>${weapon.infiniteAmmo ? '∞' : reloading ? 'RELOAD' : `${hudPlayer.ammo} / ${hudPlayer.maxAmmo}`}</strong><i><em style="width:${reloadProgress * 100}%"></em></i></div>
-          <div class="special-readout ${specialReady ? 'ready' : ''}" style="--special-progress:${Math.max(0, Math.min(1, specialProgress)) * 360}deg;--accent:${character.color}"><kbd>SPACE</kbd><span><small>${character.activeAbility.split(' — ')[0].toUpperCase()}</small><strong>${specialReady ? 'READY' : `${hudPlayer.specialCooldown.toFixed(1)}s`}</strong></span></div>
+        <div class="pixel-ammo ${reloading ? 'reloading' : ''}" title="${weapon.name} · ${weapon.infiniteAmmo ? 'infinite ammunition' : `${hudPlayer.ammo} of ${hudPlayer.maxAmmo}`}">
+          ${weapon.infiniteAmmo ? '<strong>∞</strong>' : Array.from({ length: pipCount }, (_, index) => `<i class="${index < filledPips ? 'loaded' : ''}"></i>`).join('')}
+          <em style="--reload-progress:${reloadProgress * 100}%"></em>
+        </div>
+        <div class="pixel-ability ${specialReady ? 'ready' : ''}" title="${escapeHtml(character.activeAbility)}" style="--special-progress:${Math.max(0, Math.min(1, specialProgress)) * 360}deg;--accent:${character.color}">
+          <span>${character.glyph}</span>${specialReady ? '' : `<b>${Math.ceil(hudPlayer.specialCooldown)}</b>`}
         </div>`
     }
 
