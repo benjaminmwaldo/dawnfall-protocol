@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { CHARACTERS, PLAYABLE_CHARACTERS, UPGRADES, WEAPONS } from '../src/game/data'
 import { bossWarningStrength, bossWeakPointIsOpen } from '../src/game/boss'
 import { DIFFICULTIES } from '../src/game/difficulty'
-import { GameEngine } from '../src/game/engine'
+import { GameEngine, PLAYER_COLLISION_RADIUS } from '../src/game/engine'
 import { HALF_HEART_VALUE, HEAL_CRYSTAL_SECONDS, HEART_REGEN_SECONDS, HEART_VALUE } from '../src/game/health'
 import { MAPS, mapById } from '../src/game/maps'
 import { PERSONALITY_FACTS } from '../src/game/personality'
 import { uprightSpriteTransform } from '../src/game/renderer'
+import { circleHitsSolidTerrain, pointTouchesThorns, segmentHitsSolidTerrain, terrainPropsInBounds } from '../src/game/terrain'
 import type { EnemyState, InputState, PlayerConfig } from '../src/game/types'
 
 const player: PlayerConfig = {
@@ -625,6 +626,61 @@ describe('GameEngine', () => {
     expect(new Set(MAPS.map((map) => map.structures.map((structure) => structure.type).join('|'))).size).toBe(3)
     expect(mapById('reliquary').walls.length).toBeGreaterThanOrEqual(20)
     for (const map of MAPS) expect(map.structures.map((structure) => structure.effect).sort()).toEqual(['haste', 'heal', 'turret'])
+  })
+
+  it('derives visible cover and blood-briar hazards from one deterministic terrain field', () => {
+    const map = mapById('gloamreach')
+    const first = terrainPropsInBounds(map, map.bounds.minX, map.bounds.minY, map.bounds.maxX, map.bounds.maxY)
+    const second = terrainPropsInBounds(map, map.bounds.minX, map.bounds.minY, map.bounds.maxX, map.bounds.maxY)
+    expect(second).toEqual(first)
+    expect(first.some((prop) => prop.solidRadius > 0)).toBe(true)
+    expect(first.some((prop) => prop.hazardRadius > 0)).toBe(true)
+    expect(first.some((prop) => Math.hypot(prop.x, prop.y) < 155)).toBe(false)
+
+    const solid = first.find((prop) => prop.solidRadius > 0)!
+    const thorns = first.find((prop) => prop.hazardRadius > 0)!
+    expect(circleHitsSolidTerrain(map, solid.x, solid.y, PLAYER_COLLISION_RADIUS)).toBe(true)
+    expect(segmentHitsSolidTerrain(map, solid.x - 100, solid.y, solid.x + 100, solid.y, 2)).toBe(true)
+    expect(pointTouchesThorns(map, thorns.x, thorns.y, PLAYER_COLLISION_RADIUS)?.id).toBe(thorns.id)
+  })
+
+  it('stops hunters at open-map cover and makes blood briars slow and bleed', () => {
+    const map = mapById('gloamreach')
+    const props = terrainPropsInBounds(map, map.bounds.minX, map.bounds.minY, map.bounds.maxX, map.bounds.maxY)
+    const solid = props.find((prop) => prop.solidRadius > 0)!
+    const thorns = props.find((prop) => prop.hazardRadius > 0)!
+
+    const coverEngine = new GameEngine([player], 240, 1_114, 'gloamreach')
+    const coverHunter = coverEngine.snapshot.players[0]
+    coverHunter.x = solid.x - solid.solidRadius - PLAYER_COLLISION_RADIUS - 1
+    coverHunter.y = solid.y
+    const before = coverHunter.x
+    coverEngine.step(0.05, new Map([[player.id, { ...idle, right: true }]]))
+    expect(coverHunter.x).toBe(before)
+
+    const thornEngine = new GameEngine([player], 240, 1_115, 'gloamreach')
+    const thornHunter = thornEngine.snapshot.players[0]
+    thornHunter.x = thorns.x
+    thornHunter.y = thorns.y
+    const fullHealth = thornHunter.health
+    thornEngine.step(0.05, new Map([[player.id, { ...idle, right: true }]]))
+    expect(thornHunter.health).toBe(fullHealth - HALF_HEART_VALUE)
+    expect(thornHunter.hazardExposure).toBeGreaterThan(0)
+    expect(thornHunter.vx).toBeLessThan(176)
+    expect(thornHunter.hazardCooldown).toBeGreaterThan(0)
+  })
+
+  it('uses the visible hunter footprint for hostile bullets and contact', () => {
+    const engine = new GameEngine([player], 240, 1_116, 'reliquary')
+    const hunter = engine.snapshot.players[0]
+    const health = hunter.health
+    engine.snapshot.projectiles.push({
+      id: 98_001, ownerId: 'enemy-test', x: hunter.x + PLAYER_COLLISION_RADIUS + 6 - 0.1, y: hunter.y,
+      vx: 0, vy: 0, radius: 6, damage: HALF_HEART_VALUE, life: 1, pierce: 0, bounces: 0,
+      enemy: true, chain: 0, burn: false, color: '#ef718e',
+    })
+    engine.step(0.01, new Map([[player.id, idle]]))
+    expect(hunter.health).toBe(health - HALF_HEART_VALUE)
   })
 
   it('stops hunters at Reliquary walls instead of letting them phase through', () => {

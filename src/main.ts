@@ -24,7 +24,7 @@ const formatTime = (seconds: number) => {
 const FINAL_TRIO_TYPES: BossType[] = ['broodmother', 'graveknight', 'eclipse-eye']
 const ART_BASE = `${import.meta.env.BASE_URL}art/`
 const CHARACTER_ART_INDEX: Partial<Record<PlayerConfig['character'], number>> = { vesper: 0, cinder: 1, bastion: 2, nyx: 4, tempest: 5, briar: 6, seraph: 7 }
-const CHARACTER_PORTRAITS: Partial<Record<PlayerConfig['character'], string>> = { cinder: 'cinder-portrait.webp', bastion: 'ama-portrait.webp', warden: 'aiko-portrait.webp', rapunsel: 'rapunsel-portrait.webp', eira: 'eira-portrait.webp', mara: 'mara-portrait.webp', zahra: 'zahra-portrait.webp' }
+const CHARACTER_PORTRAITS: Partial<Record<PlayerConfig['character'], string>> = { cinder: 'cinder-portrait.webp', bastion: 'ama-portrait.webp', warden: 'aiko-portrait.webp', tempest: 'tempest-portrait.webp', rapunsel: 'rapunsel-portrait.webp', eira: 'eira-portrait.webp', mara: 'mara-portrait.webp', zahra: 'zahra-portrait.webp' }
 const COMPANION_ART_INDEX: Partial<Record<string, number>> = { gravewing: 0, ashkit: 1, 'aegis-hound': 2, 'mercy-moth': 3, shadecat: 4, 'storm-wisp': 5, thornling: 6, sunbird: 7 }
 const WEAPON_ART: Record<PlayerConfig['weapon'], { file: string; columns: number; rows: number; index: number }> = {
   revolver: { file: 'armory-atlas.webp', columns: 3, rows: 2, index: 0 },

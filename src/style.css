@@ -174,7 +174,7 @@ body::before {
 .notice.error { color: var(--red); }
 
 .game-shell { position: fixed; inset: 0; overflow: hidden; background: #07100e; cursor: crosshair; }
-#game-canvas { position: absolute; left: 50%; top: 50%; display: block; transform: translate(-50%, -50%); touch-action: none; }
+#game-canvas { position: absolute; left: 0; top: 0; display: block; transform: none; touch-action: none; }
 .game-hud { position: absolute; inset: 0; pointer-events: none; font-size: 10px; }
 .hud-top-left { position: absolute; left: 24px; top: 20px; display: flex; align-items: center; gap: 14px; color: var(--muted); }
 .hud-brand { color: var(--ink); font-family: 'Oswald', sans-serif; letter-spacing: .12em; }
@@ -922,8 +922,8 @@ body::before {
 .pixel-vitals .regen-ring { width: 31px; height: 31px; grid-row: auto; border: 3px solid #050806; border-radius: 50%; box-shadow: none; background: conic-gradient(#74d8c2 var(--regen-progress), rgba(7,22,17,.82) 0); }
 .pixel-vitals .regen-ring::before { inset: 5px; border-radius: 50%; background: #07100e; }
 .pixel-vitals .regen-heart { font-size: 14px; }
-.pixel-ammo { position: fixed; z-index: 24; left: 18px; bottom: 17px; min-height: 35px; display: flex; align-items: flex-end; gap: 7px; padding: 0 0 5px; background: none; border: 0; }
-.pixel-ammo > i { width: 11px; height: 29px; display: block; background: #242721; border: 3px solid #050504; box-shadow: inset 0 0 0 2px #4e5148; clip-path: polygon(22% 0, 78% 0, 100% 16%, 100% 100%, 0 100%, 0 16%); }
+.pixel-ammo { position: fixed; z-index: 24; left: 18px; bottom: 17px; min-height: 43px; display: flex; align-items: flex-end; gap: 8px; padding: 0 0 5px; background: none; border: 0; }
+.pixel-ammo > i { width: 14px; height: 37px; display: block; background: #242721; border: 3px solid #050504; box-shadow: inset 0 0 0 2px #4e5148; clip-path: polygon(22% 0, 78% 0, 100% 16%, 100% 100%, 0 100%, 0 16%); }
 .pixel-ammo > i.loaded { background: #d58d2f; border-color: #050504; box-shadow: inset 0 0 0 2px #ffe1a0; }
 .pixel-ammo > strong { min-width: 36px; color: #fff2b9; font: 28px/1 'DM Mono', monospace; }
 .pixel-ammo > em { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: linear-gradient(90deg, #74d8c2 var(--reload-progress), #17221d 0); }

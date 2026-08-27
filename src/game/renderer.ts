@@ -2,6 +2,7 @@ import { isBoss } from './data'
 import { bossWarningStrength, bossWeakPointAngle, bossWeakPointIsOpen } from './boss'
 import { HEAL_CRYSTAL_SECONDS } from './health'
 import { mapById, type MapDefinition } from './maps'
+import { terrainPropsInBounds, type TerrainProp, type TerrainPropKind } from './terrain'
 import type { CompanionState, EnemyState, GameEvent, GameSnapshot, PlayerState, StructureState, StructureType } from './types'
 
 interface Effect {
@@ -38,10 +39,10 @@ const HUNTER_VISUALS: Record<PlayerState['character'], { skin: string; hair: str
   vesper: { skin: '#e8c7b2', hair: '#303142', coat: '#34304c', accent: '#d6bcff', build: 0.88, height: 1.04, hairLength: 16, style: 'long' },
   cinder: { skin: '#d7a17c', hair: '#71312a', coat: '#642d28', accent: '#ff8265', build: 0.98, height: 1.01, hairLength: 11, style: 'waves' },
   bastion: { skin: '#9b5f43', hair: '#39282f', coat: '#304941', accent: '#74d8c2', build: 0.86, height: 1.01, hairLength: 14, style: 'ponytail' },
-  warden: { skin: '#d9aa91', hair: '#29283a', coat: '#30304f', accent: '#b6a5ff', build: 0.82, height: 0.98, hairLength: 25, style: 'long' },
-  nyx: { skin: '#8e5d49', hair: '#352a42', coat: '#342747', accent: '#9587ff', build: 0.9, height: 1.02, hairLength: 6, style: 'shaved' },
-  tempest: { skin: '#e5b99d', hair: '#d8dce7', coat: '#29465a', accent: '#69c9ff', build: 0.86, height: 1.06, hairLength: 14, style: 'ponytail' },
-  briar: { skin: '#dca17f', hair: '#6a353d', coat: '#6a2944', accent: '#e45d82', build: 1.05, height: 0.99, hairLength: 18, style: 'waves' },
+  warden: { skin: '#d9aa91', hair: '#191a25', coat: '#30304f', accent: '#b6a5ff', build: 0.82, height: 0.98, hairLength: 28, style: 'long' },
+  nyx: { skin: '#a87359', hair: '#181523', coat: '#342747', accent: '#9587ff', build: 0.88, height: 0.98, hairLength: 27, style: 'long' },
+  tempest: { skin: '#c98c61', hair: '#d8dce7', coat: '#29465a', accent: '#69c9ff', build: 0.9, height: 1.01, hairLength: 22, style: 'ponytail' },
+  briar: { skin: '#d8a487', hair: '#4d2b27', coat: '#4e2832', accent: '#e45d82', build: 0.91, height: 1.01, hairLength: 27, style: 'waves' },
   seraph: { skin: '#f2cfb5', hair: '#e7c779', coat: '#59543a', accent: '#ffd783', build: 0.84, height: 1.08, hairLength: 17, style: 'braid' },
   rapunsel: { skin: '#f1cfb7', hair: '#5b321e', coat: '#385445', accent: '#f1c48d', build: 0.75, height: 0.96, hairLength: 36, style: 'long' },
   eira: { skin: '#efd2bf', hair: '#e6d6c0', coat: '#354e61', accent: '#a9efff', build: 0.9, height: 1.08, hairLength: 14, style: 'braid' },
@@ -79,6 +80,7 @@ export class GameRenderer {
   private cssWidth = 0
   private cssHeight = 0
   private displayScale = PIXEL_SCALE
+  private cssPixelScale = PIXEL_SCALE
   private cameraX = 0
   private cameraY = 0
   private renderCameraX = 0
@@ -101,7 +103,7 @@ export class GameRenderer {
     if (!context) throw new Error('Canvas rendering is not supported in this browser.')
     this.context = context
     this.companionSpriteAtlas.src = `${artBase}pixel-companions-v1.webp`
-    this.hunterSpriteAtlas.src = `${artBase}pixel-hunters-v1.webp`
+    this.hunterSpriteAtlas.src = `${artBase}pixel-hunters-v3.webp`
     this.weaponSpriteAtlas.src = `${artBase}pixel-weapons-v1.webp`
     this.enemySpriteAtlas.src = `${artBase}pixel-enemies-v1.webp`
     this.bossSpriteAtlas.src = `${artBase}pixel-bosses-v1.webp`
@@ -114,12 +116,21 @@ export class GameRenderer {
     this.cssWidth = Math.max(320, window.innerWidth)
     this.cssHeight = Math.max(240, window.innerHeight)
     this.displayScale = this.cssWidth <= 760 ? 4 : PIXEL_SCALE
-    this.width = Math.max(80, Math.ceil(this.cssWidth / this.displayScale))
-    this.height = Math.max(64, Math.ceil(this.cssHeight / this.displayScale))
+    const devicePixelRatio = Math.max(0.5, Math.min(4, window.devicePixelRatio || 1))
+    const physicalPixelScale = Math.max(1, Math.round(this.displayScale * devicePixelRatio))
+    this.cssPixelScale = physicalPixelScale / devicePixelRatio
+    this.width = Math.max(80, Math.ceil(this.cssWidth / this.cssPixelScale))
+    this.height = Math.max(64, Math.ceil(this.cssHeight / this.cssPixelScale))
     this.canvas.width = this.width
     this.canvas.height = this.height
-    this.canvas.style.width = `${this.width * this.displayScale}px`
-    this.canvas.style.height = `${this.height * this.displayScale}px`
+    this.canvas.style.width = `${this.width * this.cssPixelScale}px`
+    this.canvas.style.height = `${this.height * this.cssPixelScale}px`
+    // Anchor the integer-scaled surface at the physical-pixel origin. Centering a
+    // canvas that slightly overfills the viewport creates fractional CSS offsets
+    // at 125%/150% Windows scaling, which browsers quantize and blur in motion.
+    this.canvas.style.left = '0px'
+    this.canvas.style.top = '0px'
+    this.canvas.style.transform = 'none'
     this.context.setTransform(1, 0, 0, 1, 0, 0)
     this.context.imageSmoothingEnabled = false
   }
@@ -151,6 +162,7 @@ export class GameRenderer {
     this.drawWalls(map)
     this.drawStructures(snapshot.structures)
     this.drawPickups(snapshot)
+    this.drawAmbientWarnings(snapshot.enemies, snapshot.players)
     this.drawBossWarnings(snapshot.enemies, predictionSeconds)
     this.drawProjectiles(snapshot, predictionSeconds)
     this.drawEnemies(snapshot.enemies, predictionSeconds)
@@ -159,7 +171,7 @@ export class GameRenderer {
     this.drawEffects(dt)
     context.restore()
     this.drawVignette()
-    this.drawEdgeMarkers(snapshot.players, localPlayerId)
+    this.drawEdgeMarkers(snapshot.players, snapshot.enemies, localPlayerId)
   }
 
   aimFromPointer(clientX: number, clientY: number): number {
@@ -200,23 +212,23 @@ export class GameRenderer {
         const gx = Math.floor((x + cameraPixelX) / tile)
         const gy = Math.floor((y + cameraPixelY) / tile)
         const hash = Math.abs(Math.imul(gx + 8191, 374761393) ^ Math.imul(gy + 131, 668265263)) % 97
-        if (hash % 17 === 0) {
+        if (hash % 29 === 0) {
           context.fillStyle = palette.dark
           context.fillRect(Math.round(x + 2), Math.round(y + 2), 4, 4)
-        } else if (hash % 11 === 0) {
+        } else if (hash % 23 === 0) {
           context.fillStyle = palette.mid
           context.fillRect(Math.round(x + 2), Math.round(y + 3), 3, 2)
         }
         if (map.id === 'reliquary') {
-          if (hash % 5 === 0) {
+          if (hash % 13 === 0) {
             context.fillStyle = palette.light
             context.fillRect(Math.round(x + 2), Math.round(y + 2), 4, 1)
             context.fillRect(Math.round(x + 5), Math.round(y + 3), 1, 3)
-          } else if (hash % 3 === 0) {
+          } else if (hash % 11 === 0) {
             context.fillStyle = palette.mid
             context.fillRect(Math.round(x + 1), Math.round(y + 5), 3, 1)
           }
-        } else if (hash % 19 === 0) {
+        } else if (hash % 31 === 0) {
           context.fillStyle = palette.accent
           if (hash % 2 === 0) {
             context.fillRect(Math.round(x + 3), Math.round(y + 2), 1, 4)
@@ -225,7 +237,7 @@ export class GameRenderer {
             context.fillRect(Math.round(x + 2), Math.round(y + 3), 4, 1)
             context.fillRect(Math.round(x + 5), Math.round(y + 1), 1, 4)
           }
-        } else if (hash % 5 === 0) {
+        } else if (hash % 17 === 0) {
           context.fillStyle = palette.light
           context.fillRect(Math.round(x + 2), Math.round(y + 4), 2, 1)
           context.fillRect(Math.round(x + 5), Math.round(y + 2), 1, 1)
@@ -242,39 +254,48 @@ export class GameRenderer {
   private drawTerrainDetails(map: MapDefinition) {
     const left = this.renderCameraX - this.width * this.displayScale / 2 - 180
     const top = this.renderCameraY - this.height * this.displayScale / WORLD_Y_SCALE / 2 - 180
-    const grid = 180
-    const startX = Math.floor(left / grid) * grid
-    const startY = Math.floor(top / grid) * grid
-    for (let x = startX; x < left + this.width * this.displayScale + 360; x += grid) {
-      for (let y = startY; y < top + this.height * this.displayScale / WORLD_Y_SCALE + 360; y += grid) {
-        const hash = Math.abs(Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1
-        const jitterX = (Math.floor(hash * 11) % 3 - 1) * 30
-        const jitterY = (Math.floor(hash * 23) % 3 - 1) * 30
-        const kind = hash > 0.978 ? 'tree' : hash > 0.945 ? 'thorn' : hash > 0.865 ? 'ruin' : hash > 0.64 ? 'grass' : hash > 0.54 ? 'stones' : null
-        if (kind) {
-          const propX = this.snapX(x + jitterX)
-          const propY = this.snapY(y + jitterY)
-          if (map.id === 'gloamreach' && this.terrainPropAtlas.complete && this.terrainPropAtlas.naturalWidth > 0) {
-            this.drawAuthoredTerrainProp(propX, propY, kind, hash)
-          } else {
-            this.drawTerrainProp(map.id, propX, propY, kind, hash)
-          }
-        }
+    const right = left + this.width * this.displayScale + 360
+    const bottom = top + this.height * this.displayScale / WORLD_Y_SCALE + 360
+    for (const prop of terrainPropsInBounds(map, left, top, right, bottom).sort((a, b) => a.y - b.y)) {
+      const propX = this.snapX(prop.x)
+      const propY = this.snapY(prop.y)
+      this.drawTerrainFootprint(prop, propX, propY)
+      if (map.id === 'gloamreach' && this.terrainPropAtlas.complete && this.terrainPropAtlas.naturalWidth > 0) {
+        this.drawAuthoredTerrainProp(propX, propY, prop.kind, prop.seed)
+      } else {
+        this.drawTerrainProp(map.id, propX, propY, prop.kind, prop.seed)
       }
     }
   }
 
-  private drawAuthoredTerrainProp(x: number, y: number, kind: 'tree' | 'thorn' | 'ruin' | 'grass' | 'stones', seed: number) {
+  private drawTerrainFootprint(prop: TerrainProp, x: number, y: number) {
+    const context = this.context
+    if (prop.kind === 'thorn') {
+      const pulse = Math.sin(performance.now() / 180 + prop.seed * 19) > 0 ? PIXEL_SCALE : 0
+      context.fillStyle = 'rgba(128, 24, 34, .38)'
+      const radius = prop.hazardRadius + pulse
+      for (let index = 0; index < 12; index += 1) {
+        const angle = index / 12 * TAU
+        context.fillRect(this.snapX(x + Math.cos(angle) * radius) - PIXEL_SCALE / 2, this.snapY(y + Math.sin(angle) * radius) - PIXEL_SCALE / 2, PIXEL_SCALE, PIXEL_SCALE)
+      }
+    } else if (prop.solidRadius > 0) {
+      context.fillStyle = 'rgba(0, 0, 0, .46)'
+      context.fillRect(x - prop.solidRadius, y, prop.solidRadius * 2, PIXEL_SCALE)
+    }
+  }
+
+  private drawAuthoredTerrainProp(x: number, y: number, kind: TerrainPropKind, seed: number) {
     const context = this.context
     const index = kind === 'tree' ? 0
       : kind === 'thorn' ? 1
         : kind === 'ruin' ? (seed > 0.89 ? 2 : 5)
           : kind === 'grass' ? 3
             : seed > 0.525 ? 4 : 6
-    const size = index === 0 ? 216
-      : index === 1 ? 192
-        : index === 2 || index === 5 || index === 4 ? 132
-          : 78
+    const size = index === 0 ? 264
+      : index === 1 ? 228
+        : index === 2 || index === 5 ? 144
+          : index === 4 ? 150
+            : index === 3 ? 66 : 60
     context.save()
     context.translate(x, y)
     context.scale(1, 1 / WORLD_Y_SCALE)
@@ -282,7 +303,7 @@ export class GameRenderer {
     context.restore()
   }
 
-  private drawTerrainProp(mapId: MapDefinition['id'], x: number, y: number, kind: 'tree' | 'thorn' | 'ruin' | 'grass' | 'stones', seed: number) {
+  private drawTerrainProp(mapId: MapDefinition['id'], x: number, y: number, kind: TerrainPropKind, seed: number) {
     const context = this.context
     const u = PIXEL_SCALE
     const ember = mapId === 'emberfall'
@@ -528,6 +549,36 @@ export class GameRenderer {
         context.beginPath(); context.moveTo(0, -38); context.lineTo(480, -70); context.lineTo(480, 70); context.lineTo(0, 38); context.closePath(); context.fill(); context.stroke()
       }
       context.setLineDash([])
+      context.restore()
+    }
+  }
+
+  private drawAmbientWarnings(enemies: EnemyState[], players: PlayerState[]) {
+    const context = this.context
+    for (const enemy of enemies) {
+      const rangedThreshold = enemy.type === 'hexer' ? 0.72 : enemy.type === 'spitter' ? 0.58 : 0
+      const chargerCycle = enemy.type === 'charger' ? enemy.phase % 4.2 : 0
+      const chargingSoon = enemy.type === 'charger' && chargerCycle > 3.35
+      if ((!rangedThreshold || enemy.attackCooldown > rangedThreshold) && !chargingSoon) continue
+      const target = players.filter((player) => !player.downed && !player.eliminated)
+        .sort((a, b) => Math.hypot(a.x - enemy.x, a.y - enemy.y) - Math.hypot(b.x - enemy.x, b.y - enemy.y))[0]
+      if (!target) continue
+      const x = this.snapX(enemy.x)
+      const y = this.snapY(enemy.y)
+      const angle = Math.atan2(target.y - enemy.y, target.x - enemy.x)
+      const distance = Math.min(chargingSoon ? 330 : 230, Math.hypot(target.x - enemy.x, target.y - enemy.y))
+      const color = chargingSoon ? '#ffb454' : enemy.type === 'hexer' ? '#be7dff' : '#ef718e'
+      const pulse = Math.sin(performance.now() / 70 + enemy.id) > 0
+      context.save()
+      context.fillStyle = color
+      context.globalAlpha = pulse ? 0.85 : 0.38
+      context.fillRect(x - PIXEL_SCALE, y - PIXEL_SCALE, PIXEL_SCALE * 2, PIXEL_SCALE * 2)
+      for (let marker = 1; marker <= 6; marker += 1) {
+        const markerDistance = distance * marker / 7
+        const markerX = this.snapX(enemy.x + Math.cos(angle) * markerDistance)
+        const markerY = this.snapY(enemy.y + Math.sin(angle) * markerDistance)
+        context.fillRect(markerX - PIXEL_SCALE / 2, markerY - PIXEL_SCALE / 2, PIXEL_SCALE, PIXEL_SCALE)
+      }
       context.restore()
     }
   }
@@ -1246,7 +1297,7 @@ export class GameRenderer {
     context.fillRect(this.width - 1, 0, 1, this.height)
   }
 
-  private drawEdgeMarkers(players: PlayerState[], localPlayerId: string) {
+  private drawEdgeMarkers(players: PlayerState[], enemies: EnemyState[], localPlayerId: string) {
     const context = this.context
     for (const player of players) {
       if (player.id === localPlayerId || player.eliminated) continue
@@ -1261,6 +1312,23 @@ export class GameRenderer {
       const y = this.height / 2 + Math.sin(angle) * scale
       context.fillStyle = player.color
       context.fillRect(Math.round(x) - 1, Math.round(y) - 1, 3, 3)
+    }
+    for (const enemy of enemies.filter((candidate) => isBoss(candidate.type) && candidate.health > 0)) {
+      const sx = (enemy.x - this.renderCameraX) / this.displayScale + this.width / 2
+      const sy = (enemy.y - this.renderCameraY) * WORLD_Y_SCALE / this.displayScale + this.height / 2
+      if (sx > 10 && sx < this.width - 10 && sy > 10 && sy < this.height - 10) continue
+      const angle = Math.atan2(sy - this.height / 2, sx - this.width / 2)
+      const radiusX = this.width / 2 - 7
+      const radiusY = this.height / 2 - 7
+      const scale = Math.min(Math.abs(radiusX / (Math.cos(angle) || 0.001)), Math.abs(radiusY / (Math.sin(angle) || 0.001)))
+      const x = Math.round(this.width / 2 + Math.cos(angle) * scale)
+      const y = Math.round(this.height / 2 + Math.sin(angle) * scale)
+      context.fillStyle = '#030507'
+      context.fillRect(x - 3, y - 3, 7, 7)
+      context.fillStyle = BOSS_COLORS[enemy.type] ?? '#ef718e'
+      context.fillRect(x - 2, y - 2, 5, 5)
+      context.fillStyle = '#fff0bd'
+      context.fillRect(x, y, 1, 1)
     }
   }
 

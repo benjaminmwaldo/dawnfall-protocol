@@ -4,6 +4,7 @@ import { difficultyById } from './difficulty'
 import { HALF_HEART_VALUE, HEAL_CRYSTAL_SECONDS, HEART_REGEN_SECONDS, HEART_VALUE, quantizeEnemyDamage } from './health'
 import { mapById, type MapDefinition } from './maps'
 import { SeededRandom } from './random'
+import { circleHitsSolidTerrain, pointTouchesThorns, segmentHitsSolidTerrain } from './terrain'
 import type {
   BossType,
   CompanionKind,
@@ -28,6 +29,9 @@ const SPAWN_PADDING = 110
 const TAU = Math.PI * 2
 const HIT_INVULNERABILITY = 0.42
 const KINETIC_SHELL_BONUS = 0.28
+export const PLAYER_COLLISION_RADIUS = 17
+const THORN_DAMAGE_COOLDOWN = 0.9
+const THORN_MOVE_MULTIPLIER = 0.68
 const BOSS_SCHEDULE: Array<{ at: number; type: BossType }> = [
   { at: 0.12, type: 'void-hart' },
   { at: 0.24, type: 'tollkeeper' },
@@ -223,6 +227,8 @@ export class GameEngine {
       specialPulse: 0,
       specialHeld: false,
       invulnerable: 0,
+      hazardCooldown: 0,
+      hazardExposure: 0,
       downed: false,
       eliminated: false,
       downTimer: partySize > 1 ? 24 : 0,
@@ -253,6 +259,7 @@ export class GameEngine {
   private updatePlayers(dt: number, inputs: ReadonlyMap<string, InputState>) {
     for (const player of this.snapshot.players) {
       player.invulnerable = Math.max(0, player.invulnerable - dt)
+      player.hazardCooldown = Math.max(0, player.hazardCooldown - dt)
       player.fireCooldown = Math.max(0, player.fireCooldown - dt)
       player.specialCooldown = Math.max(0, player.specialCooldown - dt)
       player.specialPulse = Math.max(0, player.specialPulse - dt)
@@ -288,6 +295,8 @@ export class GameEngine {
       const burningNearby = player.character === 'cinder' && rank(player, 'ash-step') > 0 && this.snapshot.enemies.some((enemy) => enemy.burn > 0 && distanceSquared(player.x, player.y, enemy.x, enemy.y) < 260 * 260)
       const chilledNearby = player.character === 'eira' && rank(player, 'snowstep') > 0 && this.snapshot.enemies.some((enemy) => enemy.slow > 0 && distanceSquared(player.x, player.y, enemy.x, enemy.y) < 250 * 250)
       const lastStand = rank(player, 'iron-heart') > 0 && player.health <= player.maxHealth * 0.5
+      const thornPatch = pointTouchesThorns(this.map, player.x, player.y, PLAYER_COLLISION_RADIUS)
+      player.hazardExposure = thornPatch ? Math.min(1, player.hazardExposure + dt * 4) : Math.max(0, player.hazardExposure - dt * 6)
       const moveMultiplier = Math.pow(1.25, rank(player, 'fleetfoot'))
         * Math.pow(1.12, this.snapshot.teamBuffs['eclipse-stride'] ?? 0)
         * Math.pow(1.08, this.snapshot.teamBuffs['hart-stride'] ?? 0)
@@ -295,10 +304,18 @@ export class GameEngine {
         * (chilledNearby ? 1.28 : 1)
         * (lastStand ? 1.2 : 1)
         * (player.hasteRemaining > 0 ? 1.22 : 1)
+        * (thornPatch ? THORN_MOVE_MULTIPLIER : 1)
       const speed = 176 * moveMultiplier
       player.vx = moveX * speed
       player.vy = moveY * speed
-      this.moveCircle(player, player.vx * dt, player.vy * dt, 11)
+      this.moveCircle(player, player.vx * dt, player.vy * dt, PLAYER_COLLISION_RADIUS)
+      const enteredThorns = pointTouchesThorns(this.map, player.x, player.y, PLAYER_COLLISION_RADIUS)
+      if (enteredThorns && player.hazardCooldown <= 0) {
+        player.hazardCooldown = THORN_DAMAGE_COOLDOWN
+        const healthBeforeBriars = player.health
+        this.damagePlayer(player, HALF_HEART_VALUE)
+        if (player.health < healthBeforeBriars) this.pushEvent('hurt', enteredThorns.x, enteredThorns.y, 'BLOOD BRIARS · HALF-HEART BLEED')
+      }
 
       const inFormation = this.snapshot.players.length === 1 || this.snapshot.players.some((ally) => ally.id !== player.id
         && !ally.downed && !ally.eliminated && distanceSquared(player.x, player.y, ally.x, ally.y) < 320 * 320)
@@ -361,7 +378,7 @@ export class GameEngine {
     }
 
     if (player.character === 'nyx') {
-      this.moveCircle(player, Math.cos(player.aim) * 145, Math.sin(player.aim) * 145, 11)
+      this.moveCircle(player, Math.cos(player.aim) * 145, Math.sin(player.aim) * 145, PLAYER_COLLISION_RADIUS)
       player.invulnerable = Math.max(player.invulnerable, 2)
       player.hasteRemaining = Math.max(player.hasteRemaining, 2)
     }
@@ -707,7 +724,6 @@ export class GameEngine {
     }
     const centerX = living.reduce((sum, player) => sum + player.x, 0) / Math.max(1, living.length)
     const centerY = living.reduce((sum, player) => sum + player.y, 0) / Math.max(1, living.length)
-    const angle = this.random.range(0, Math.PI * 2)
     const squadRadius = living.reduce((furthest, player) => Math.max(furthest, Math.hypot(player.x - centerX, player.y - centerY)), 0)
     const largestViewportRadius = living.reduce((largest, player) => {
       const input = inputs.get(player.id)
@@ -715,8 +731,18 @@ export class GameEngine {
       const height = clamp(input?.viewportHeight ?? 720, 240, 1440)
       return Math.max(largest, Math.hypot(width / 2, height / 2))
     }, Math.hypot(640, 360))
-    const range = squadRadius + largestViewportRadius + SPAWN_PADDING + this.random.range(0, 150)
-    return { x: centerX + Math.cos(angle) * range, y: centerY + Math.sin(angle) * range }
+    let fallback = { x: centerX + largestViewportRadius + SPAWN_PADDING, y: centerY }
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const angle = this.random.range(0, Math.PI * 2)
+      const range = squadRadius + largestViewportRadius + SPAWN_PADDING + this.random.range(0, 150)
+      const candidate = {
+        x: clamp(centerX + Math.cos(angle) * range, this.map.bounds.minX + 80, this.map.bounds.maxX - 80),
+        y: clamp(centerY + Math.sin(angle) * range, this.map.bounds.minY + 80, this.map.bounds.maxY - 80),
+      }
+      fallback = candidate
+      if (!circleHitsSolidTerrain(this.map, candidate.x, candidate.y, 70)) return candidate
+    }
+    return fallback
   }
 
   private spawnEnemy(type: EnemyType, inputs: ReadonlyMap<string, InputState>, finale = false) {
@@ -750,8 +776,8 @@ export class GameEngine {
       id: this.entityId++, type,
       x: spawn.x, y: spawn.y,
       vx: 0, vy: 0, health: base.hp * scale, maxHealth: base.hp * scale, radius: base.radius,
-      speed: base.speed * (1 + multiplayerPressure * 0.06) * (finale ? 1.1 : 1) * difficulty.enemySpeed, damage: quantizeEnemyDamage((base.damage + (finale ? HALF_HEART_VALUE : 0)) * difficulty.enemyDamage), attackCooldown: this.random.range(0, finale ? 0.18 : 0.45),
-      burn: 0, burnTick: 0.5, slow: 0, phase: this.random.range(0, Math.PI * 2),
+      speed: base.speed * (1 + multiplayerPressure * 0.06) * (finale ? 1.1 : 1) * difficulty.enemySpeed, damage: quantizeEnemyDamage((base.damage + (finale ? HALF_HEART_VALUE : 0)) * difficulty.enemyDamage), attackCooldown: type === 'spitter' || type === 'hexer' ? this.random.range(0.8, 1.15) : this.random.range(0, finale ? 0.18 : 0.45),
+      burn: 0, burnTick: 0.5, slow: 0, phase: type === 'charger' ? this.random.range(1, 3.1) : this.random.range(0, Math.PI * 2),
       abilityCooldown: isBoss(type) ? this.random.range(finale ? 0.45 : 1, finale ? 1.1 : 2) : 0,
       summonCooldown: isBoss(type) ? this.random.range(finale ? 1.8 : 3.2, finale ? 3 : 4.8) : 0,
       contactCooldown: 0,
@@ -980,7 +1006,7 @@ export class GameEngine {
       enemy.vy = Math.sin(angle) * speed
       this.moveCircle(enemy, enemy.vx * dt, enemy.vy * dt, enemy.radius)
       const canContact = isBoss(enemy.type) ? (enemy.contactCooldown ?? 0) <= 0 : enemy.attackCooldown <= 0
-      if (distance < enemy.radius + 13 && canContact) {
+      if (distance < enemy.radius + PLAYER_COLLISION_RADIUS && canContact) {
         this.damagePlayer(target, enemy.damage)
         if (isBoss(enemy.type)) enemy.contactCooldown = 0.72
         else enemy.attackCooldown = 1
@@ -1012,13 +1038,14 @@ export class GameEngine {
       if (!projectile.enemy && (projectile.homing ?? 0) > 0) this.steerHomingProjectile(projectile, dt)
       const nextX = projectile.x + projectile.vx * dt
       const nextY = projectile.y + projectile.vy * dt
-      if (this.segmentHitsWall(projectile.x, projectile.y, nextX, nextY, projectile.radius)) {
+      if (this.segmentHitsWorld(projectile.x, projectile.y, nextX, nextY, projectile.radius)) {
         if (!projectile.enemy && (projectile.blastRadius ?? 0) > 0) {
           const hits = this.projectileHits.get(projectile.id) ?? new Set<number>()
           this.detonateProjectile(projectile, projectile.x, projectile.y, hits)
           this.projectileHits.set(projectile.id, hits)
         }
         projectile.life = 0
+        this.pushEvent('hit', projectile.x, projectile.y)
         continue
       }
       projectile.x = nextX
@@ -1034,7 +1061,7 @@ export class GameEngine {
       if (projectile.enemy) {
         for (const player of this.snapshot.players) {
           if (player.downed || player.eliminated) continue
-          if (distanceSquared(projectile.x, projectile.y, player.x, player.y) < Math.pow(projectile.radius + 11, 2)) {
+          if (distanceSquared(projectile.x, projectile.y, player.x, player.y) < Math.pow(projectile.radius + PLAYER_COLLISION_RADIUS, 2)) {
             this.damagePlayer(player, projectile.damage)
             projectile.life = 0
             break
@@ -1353,10 +1380,10 @@ export class GameEngine {
   private moveCircle(entity: { x: number; y: number; vx: number; vy: number }, dx: number, dy: number, radius: number) {
     const bounds = this.map.bounds
     const nextX = clamp(entity.x + dx, bounds.minX + radius, bounds.maxX - radius)
-    if (!this.circleHitsWall(nextX, entity.y, radius)) entity.x = nextX
+    if (!this.circleHitsObstacle(nextX, entity.y, radius)) entity.x = nextX
     else entity.vx = 0
     const nextY = clamp(entity.y + dy, bounds.minY + radius, bounds.maxY - radius)
-    if (!this.circleHitsWall(entity.x, nextY, radius)) entity.y = nextY
+    if (!this.circleHitsObstacle(entity.x, nextY, radius)) entity.y = nextY
     else entity.vy = 0
   }
 
@@ -1368,8 +1395,16 @@ export class GameEngine {
     })
   }
 
+  private circleHitsObstacle(x: number, y: number, radius: number): boolean {
+    return this.circleHitsWall(x, y, radius) || circleHitsSolidTerrain(this.map, x, y, radius)
+  }
+
   private segmentHitsWall(ax: number, ay: number, bx: number, by: number, padding = 0): boolean {
     return this.map.walls.some((wall) => this.segmentIntersectsWall(ax, ay, bx, by, wall, padding))
+  }
+
+  private segmentHitsWorld(ax: number, ay: number, bx: number, by: number, padding = 0): boolean {
+    return this.segmentHitsWall(ax, ay, bx, by, padding) || segmentHitsSolidTerrain(this.map, ax, ay, bx, by, padding)
   }
 
   private segmentIntersectsWall(ax: number, ay: number, bx: number, by: number, wall: MapWall, padding: number): boolean {
@@ -1398,7 +1433,7 @@ export class GameEngine {
   }
 
   private hasLineOfSight(ax: number, ay: number, bx: number, by: number): boolean {
-    return !this.segmentHitsWall(ax, ay, bx, by, 2)
+    return !this.segmentHitsWorld(ax, ay, bx, by, 2)
   }
 
   private navigationAngle(x: number, y: number, targetX: number, targetY: number, directAngle: number): number {

@@ -64,6 +64,8 @@ export interface PlayerState extends PlayerConfig {
   specialPulse: number
   specialHeld: boolean
   invulnerable: number
+  hazardCooldown: number
+  hazardExposure: number
   downed: boolean
   eliminated: boolean
   downTimer: number

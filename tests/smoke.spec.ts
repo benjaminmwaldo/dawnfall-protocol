@@ -16,6 +16,7 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
   await expect(page.locator('.portrait-art')).toHaveCount(7)
   await expect(page.locator('.portrait-art').first()).toHaveCSS('background-image', /hunter-portraits-v3\.webp/)
   await expect(page.locator('[data-character="cinder"] .portrait-art')).toHaveCSS('background-image', /cinder-portrait\.webp/)
+  await expect(page.locator('[data-character="tempest"] .portrait-art')).toHaveCSS('background-image', /tempest-portrait\.webp/)
   await expect(page.locator('.weapon-art')).toHaveCount(10)
   await expect(page.locator('.map-card')).toHaveCount(3)
   await expect(page.locator('[data-map="reliquary"]')).toContainText('9 ROOMS')
@@ -53,6 +54,9 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
   }))
   expect(pixelCanvas.logicalWidth).toBeLessThan(pixelCanvas.displayWidth / 2)
   expect(pixelCanvas.rendering).toMatch(/pixelated|crisp-edges/)
+  await expect(page.locator('#game-canvas')).toHaveCSS('left', '0px')
+  await expect(page.locator('#game-canvas')).toHaveCSS('top', '0px')
+  await expect(page.locator('#game-canvas')).toHaveCSS('transform', 'none')
   await expect(page.locator('.controls-hud')).toBeHidden()
   await expect(page.locator('#map-hud')).toContainText('The Reliquary')
   await expect(page.locator('#map-hud')).toContainText('Black Signal')
@@ -75,7 +79,7 @@ test('loads the production shell and starts a solo hunt', async ({ page }) => {
     expect.stringContaining('armory-atlas-v2.webp'),
     expect.stringContaining('sword-dawncleaver.webp'),
     expect.stringContaining('pixel-companions-v1.webp'),
-    expect.stringContaining('pixel-hunters-v1.webp'),
+    expect.stringContaining('pixel-hunters-v3.webp'),
     expect.stringContaining('pixel-weapons-v1.webp'),
     expect.stringContaining('pixel-enemies-v1.webp'),
     expect.stringContaining('pixel-bosses-v1.webp'),
@@ -103,4 +107,37 @@ test('keeps the illustrated interface usable on a phone viewport', async ({ page
   await expect(page.locator('.touch-controls')).toBeAttached()
   await expect(page.locator('[data-touch-stick="move"]')).toBeAttached()
   await expect(page.locator('[data-touch-stick="aim"]')).toBeAttached()
+})
+
+test('keeps moving pixel art on the physical pixel grid at Windows display scaling', async ({ browser }) => {
+  const context = await browser.newContext({ baseURL: 'http://127.0.0.1:4173', viewport: { width: 1365, height: 768 }, deviceScaleFactor: 1.25 })
+  const page = await context.newPage()
+  await page.goto('/')
+  await page.getByTestId('solo-button').click()
+  await page.locator('[data-character="tempest"]').click()
+  await page.getByTestId('launch-button').click()
+  await expect(page.getByTestId('game-shell')).toBeVisible()
+  await page.keyboard.down('d')
+  await page.waitForTimeout(750)
+  const pixels = await page.locator('#game-canvas').evaluate((element) => {
+    const canvas = element as HTMLCanvasElement
+    const rect = canvas.getBoundingClientRect()
+    const ratio = window.devicePixelRatio
+    return {
+      physicalScaleX: rect.width * ratio / canvas.width,
+      physicalScaleY: rect.height * ratio / canvas.height,
+      physicalLeft: rect.left * ratio,
+      physicalTop: rect.top * ratio,
+      smoothing: canvas.getContext('2d')?.imageSmoothingEnabled,
+      transform: getComputedStyle(canvas).transform,
+    }
+  })
+  await page.keyboard.up('d')
+  expect(pixels.physicalScaleX).toBeCloseTo(Math.round(pixels.physicalScaleX), 3)
+  expect(pixels.physicalScaleY).toBeCloseTo(Math.round(pixels.physicalScaleY), 3)
+  expect(pixels.physicalLeft).toBeCloseTo(Math.round(pixels.physicalLeft), 3)
+  expect(pixels.physicalTop).toBeCloseTo(Math.round(pixels.physicalTop), 3)
+  expect(pixels.smoothing).toBe(false)
+  expect(pixels.transform).toBe('none')
+  await context.close()
 })
